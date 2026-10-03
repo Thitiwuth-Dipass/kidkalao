@@ -1,0 +1,32 @@
+rules_version = '2';
+
+// กฎความปลอดภัยของฐานข้อมูล "คิดค่าเหล้า"
+// - เปิดอ่านได้ทีละบิล เฉพาะคนที่มีลิงก์ (รหัสบิลสุ่ม 20 ตัวอักษร) ดูรายการบิลทั้งหมดไม่ได้
+// - ทุกคนที่มีลิงก์ช่วยกันแก้บิลได้ แต่ลบบิลทิ้งไม่ได้
+// - ข้อมูลต้องอยู่ในรูปแบบที่แอปใช้เท่านั้น
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /bills/{billId} {
+      function signedIn() {
+        return request.auth != null;
+      }
+      function validBill() {
+        let d = request.resource.data;
+        return d.keys().hasOnly(['v', 'title', 'date', 'round', 'people', 'items', 'contribs', 'payments', 'createdAt', 'updatedAt'])
+          && d.v == 1
+          && d.title is string && d.title.size() <= 80
+          && d.date is string && d.date.size() <= 10
+          && d.round is number
+          && d.people is map && d.people.size() <= 60
+          && d.items is map && d.items.size() <= 300
+          && d.contribs is map && d.contribs.size() <= 60
+          && d.payments is map && d.payments.size() <= 300;
+      }
+      allow get: if signedIn();
+      allow list: if false;
+      allow create: if signedIn() && billId.matches('^[A-Za-z0-9]{16,40}$') && validBill();
+      allow update: if signedIn() && validBill();
+      allow delete: if false;
+    }
+  }
+}

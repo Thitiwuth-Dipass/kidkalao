@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>นโยบายความเป็นส่วนตัว · คิดค่าเหล้า</title>
+<style>
+:root{--bg:#EAF0F1;--surface:#FFFFFF;--ink:#13222A;--muted:#566870;--line:#D0DCDF;--accent-ink:#8A5100;color-scheme:light}
+@media (prefers-color-scheme: dark){:root{--bg:#0D1519;--surface:#152127;--ink:#E5EDEF;--muted:#93A4AB;--line:#29393F;--accent-ink:#F5BA66;color-scheme:dark}}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:"Anuphan","Noto Sans Thai","Leelawadee UI",Tahoma,sans-serif;font-size:16px;line-height:1.7}
+main{max-width:680px;margin:0 auto;padding:28px 16px 48px}
+.eyebrow{color:var(--accent-ink);font-size:14px}
+h1{font-size:26px;line-height:1.3;margin:4px 0 6px}
+h2{font-size:18px;margin:28px 0 6px}
+p,li{color:var(--ink)}
+.muted{color:var(--muted);font-size:14px}
+ul{padding-left:1.2em}
+</style>
+</head>
+<body>
+<main>
+  <div class="eyebrow">คิดค่าเหล้า</div>
+  <h1>นโยบายความเป็นส่วนตัว</h1>
+  <p class="muted">ปรับปรุงล่าสุด 3 ตุลาคม 2569</p>
+
+  <p>"คิดค่าเหล้า" เป็นเครื่องมือหารค่าใช้จ่ายระหว่างเพื่อนที่ทำขึ้นใช้กันเองในกลุ่ม ไม่ได้ทำเพื่อการค้า หน้านี้อธิบายว่าเก็บข้อมูลอะไร และนำไปใช้อย่างไร</p>
+
+  <h2>ข้อมูลที่ใช้จากบัญชี LINE</h2>
+  <ul>
+    <li>ชื่อที่แสดง รูปโปรไฟล์ และรหัสผู้ใช้ LINE ของคุณ ใช้เพื่อแสดงว่าคุณคือใครในบิล และบอกว่าคุณต้องโอนให้ใคร</li>
+    <li>เราไม่ได้อ่านแชท รายชื่อเพื่อน หรือข้อมูลอื่นในบัญชี LINE ของคุณ</li>
+  </ul>
+
+  <h2>ข้อมูลในบิล</h2>
+  <ul>
+    <li>ชื่องาน รายชื่อคน รายการค่าใช้จ่าย เงินสมทบ เบอร์พร้อมเพย์ที่ผู้ใช้กรอกเอง และประวัติการกดยืนยันการโอน</li>
+    <li>ข้อมูลเก็บไว้ในบริการ Firebase Cloud Firestore ของ Google</li>
+    <li>ใครก็ตามที่มีลิงก์บิลจะเปิดดูและแก้ไขบิลนั้นได้ ควรส่งลิงก์ให้เฉพาะคนในกลุ่ม และไม่ควรใส่ข้อมูลที่ไม่อยากให้คนในกลุ่มเห็น</li>
+  </ul>
+
+  <h2>การใช้และการเปิดเผยข้อมูล</h2>
+  <ul>
+    <li>ใช้ข้อมูลเพื่อคำนวณและแสดงยอดที่แต่ละคนต้องจ่ายเท่านั้น</li>
+    <li>ไม่ขาย ไม่ให้เช่า และไม่ส่งข้อมูลให้บุคคลอื่นเพื่อการโฆษณา</li>
+  </ul>
+
+  <h2>การลบข้อมูล</h2>
+  <p>หากต้องการให้ลบบิลหรือข้อมูลของคุณ ติดต่อผู้ดูแลตามช่องทางด้านล่าง</p>
+
+  <h2>ติดต่อผู้ดูแล</h2>
+  <p>อีเมล: <span id="contact">diamondhctep@gmail.com</span></p>
+</main>
+</body>
+</html>

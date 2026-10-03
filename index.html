@@ -1,0 +1,507 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>คิดค่าเหล้า</title>
+<meta name="description" content="หารค่าเหล้าและค่าใช้จ่ายในวง บอกว่าใครโอนให้ใคร พร้อม QR พร้อมเพย์">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Anuphan:wght@400;500;600&family=Chakra+Petch:wght@500;600&family=Mitr:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* Layout: phones get one column (people → items → contributions → receipt) with a fixed status bar; desktop pins the receipt on the right. */
+:root{
+  --bg:#EAF0F1; --surface:#FFFFFF; --surface-2:#F2F6F7; --seg-on:#FFFFFF;
+  --ink:#13222A; --muted:#566870; --line:#D0DCDF;
+  --accent:#E3901A; --accent-ink:#8A5100; --accent-soft:#FBEBD1; --on-accent:#1F1400;
+  --good:#1F7346; --good-soft:#DCEFE3; --bad:#AE3828; --bad-soft:#F8E0DB;
+  --receipt:#FFFEFA; --scrim:rgb(8 16 20 / .5); --shadow:rgb(10 30 40 / .12);
+  --c-drink:#D9850B; --c-mixer:#2793A8; --c-food:#C4553A; --c-room:#7457BD; --c-travel:#4D8A39; --c-other:#86939A;
+  --qr-bg:#FFFFFF; --qr-fg:#000000;
+  --font-display:"Mitr","Noto Sans Thai",Tahoma,sans-serif;
+  --font-body:"Anuphan","Noto Sans Thai","Leelawadee UI",Tahoma,system-ui,sans-serif;
+  --font-num:"Chakra Petch","Anuphan",ui-monospace,monospace;
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#0D1519; --surface:#152127; --surface-2:#1B2930; --seg-on:#27373F;
+    --ink:#E5EDEF; --muted:#93A4AB; --line:#29393F;
+    --accent:#F0A43E; --accent-ink:#F5BA66; --accent-soft:#38280F; --on-accent:#1F1400;
+    --good:#62C690; --good-soft:#15301F; --bad:#F08B79; --bad-soft:#3A1C17;
+    --receipt:#18252B; --scrim:rgb(0 0 0 / .6); --shadow:rgb(0 0 0 / .4);
+    --c-drink:#F0A43E; --c-mixer:#4BB8CC; --c-food:#E2735A; --c-room:#9C82DF; --c-travel:#71B45C; --c-other:#A2AEB4;
+    color-scheme:dark;
+  }
+}
+
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font-body);font-size:15px;line-height:1.55;padding-top:env(safe-area-inset-top,0px)}
+[hidden]{display:none!important}
+img{max-width:100%}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+button:disabled{cursor:not-allowed;opacity:.55}
+h1,h2,h3{font-family:var(--font-display);font-weight:500;margin:0;line-height:1.3;text-wrap:balance}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.num{font-family:var(--font-num);font-variant-numeric:tabular-nums}
+
+.app{max-width:1120px;margin:0 auto;padding-inline:16px;padding-block:14px calc(104px + env(safe-area-inset-bottom,0px))}
+
+/* header */
+.top{display:grid;gap:10px;margin-bottom:18px}
+.brand-row{display:flex;justify-content:space-between;align-items:center;gap:10px;min-height:36px}
+.brand{display:flex;align-items:center;gap:8px;font-family:var(--font-display);font-size:15px;color:var(--accent-ink);text-decoration:none;border:0;background:none;padding:0}
+.brand svg{width:22px;height:22px;flex:none}
+.me{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted);min-width:0}
+.me span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.avatar{width:28px;height:28px;border-radius:50%;flex:none;object-fit:cover;background:var(--surface-2);display:inline-grid;place-items:center;font-size:13px;font-weight:600;color:var(--accent-ink);border:1px solid var(--line)}
+.banner{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;border-radius:12px;padding:10px 12px;font-size:14px;background:var(--accent-soft);color:var(--accent-ink)}
+.banner.bad{background:var(--bad-soft);color:var(--bad)}
+.banner p{margin:0;flex:1 1 220px}
+.title-input{width:100%;font-family:var(--font-display);font-size:28px;font-weight:500;line-height:1.25;border:0;border-bottom:2px solid transparent;border-radius:0;background:transparent;padding:2px 0;min-width:0}
+.title-input:hover{border-bottom-color:var(--line)}
+.title-input:focus{outline:none;border-bottom-color:var(--accent)}
+.meta{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;color:var(--muted);font-size:14px}
+.bill-head{display:grid;gap:10px}
+.share-row{display:flex;flex-wrap:wrap;gap:8px}
+.share-row .primary{flex:1 1 200px}
+.loading{padding:40px 0;text-align:center;color:var(--muted)}
+
+/* controls */
+.inp{width:100%;min-width:0;min-height:42px;padding:8px 11px;background:var(--surface);border:1px solid var(--line);border-radius:10px}
+.inp:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+.inp.soft{background:var(--surface-2);border-color:transparent}
+.inp.soft:focus{background:var(--surface);border-color:var(--accent)}
+.inp.date{width:auto;min-height:36px;padding:4px 10px}
+select.inp{padding-right:6px}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:42px;padding:0 16px;border-radius:10px;border:1px solid var(--line);background:var(--surface);font-weight:500;white-space:nowrap;text-decoration:none}
+.btn:hover{border-color:var(--muted)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--on-accent);font-weight:600}
+.btn.good{background:var(--good-soft);border-color:var(--good-soft);color:var(--good);font-weight:600}
+.btn.ghost{background:transparent}
+.btn.small{min-height:34px;padding:0 12px;font-size:14px}
+.btn.wide{width:100%}
+.link{border:0;background:none;padding:2px 4px;color:var(--accent-ink);font-size:13px;font-weight:500;text-decoration:underline;text-underline-offset:3px}
+.icon-btn{width:36px;height:36px;display:inline-grid;place-items:center;border:0;border-radius:10px;background:transparent;color:var(--muted);font-size:20px;line-height:1}
+.icon-btn:hover{background:var(--surface-2);color:var(--ink)}
+.chip{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:5px 12px;font-size:14px;white-space:nowrap}
+.chip .avatar{width:20px;height:20px;font-size:11px}
+.chip[aria-pressed="true"]{background:var(--accent-soft);border-color:var(--accent);color:var(--accent-ink);font-weight:500}
+.seg{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:3px;padding:3px;background:var(--surface-2);border:1px solid var(--line);border-radius:12px}
+.seg.seg3{grid-template-columns:repeat(3,minmax(0,1fr))}
+.seg button{border:0;background:transparent;border-radius:9px;min-height:36px;padding:0 4px;font-size:14px;color:var(--muted)}
+.seg button[aria-pressed="true"]{background:var(--seg-on);color:var(--ink);font-weight:600;box-shadow:0 1px 3px var(--shadow)}
+.hint{font-size:13px;color:var(--muted);margin:0}
+.error{color:var(--bad);font-size:14px;margin:0}
+.ok{color:var(--good)}
+.field{display:grid;gap:4px;min-width:0}
+.field>span,.field>legend{font-size:13px;color:var(--muted);font-weight:500;padding:0}
+fieldset.field{border:0;margin:0;padding:0;min-width:0;gap:8px}
+
+/* layout */
+.cols{display:grid;gap:32px}
+.col-input{display:grid;gap:32px;min-width:0}
+.col-summary{min-width:0}
+.sec-head{display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin-bottom:6px}
+.sec-head h2{font-size:21px}
+.count{font-family:var(--font-num);color:var(--muted);font-size:14px}
+.sec-hint{margin-bottom:12px}
+
+/* home */
+.home{display:grid;gap:28px;max-width:560px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:18px;display:grid;gap:12px}
+.card h1{font-size:24px}
+.recent-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 10px;align-items:center;padding:12px}
+.recent-row + .recent-row{border-top:1px solid var(--line)}
+.recent-row a{color:var(--ink);text-decoration:none;font-weight:500;overflow-wrap:anywhere}
+.recent-row small{grid-column:1;color:var(--muted);font-size:13px}
+
+/* who am I */
+.whoami{background:var(--accent-soft);border-radius:14px;padding:14px;display:grid;gap:10px}
+.whoami h2{font-size:17px;color:var(--accent-ink)}
+.whoami .pick{display:flex;flex-wrap:wrap;gap:6px}
+
+/* people */
+.people,.items{list-style:none;margin:0;padding:0;background:var(--surface);border:1px solid var(--line);border-radius:14px;overflow:hidden}
+.people:empty,.items:empty{display:none}
+.person{display:grid;grid-template-columns:auto minmax(0,1fr) auto auto auto;gap:6px;align-items:center;padding:10px}
+.person + .person{border-top:1px solid var(--line)}
+.person .p-pp{grid-column:2/-1;min-height:36px;font-size:14px}
+.person .p-msg{grid-column:2/-1;font-size:12px;margin-top:-2px}
+.person .p-msg:empty{display:none}
+.person.mine{background:linear-gradient(90deg,var(--accent-soft),transparent 60%)}
+.tog{min-height:42px;min-width:62px;padding:0 8px;border-radius:10px;border:1px solid var(--accent);background:var(--accent-soft);color:var(--accent-ink);font-size:14px;font-weight:500}
+.tog[aria-pressed="false"]{border-color:var(--line);background:var(--surface-2);color:var(--muted);font-weight:400}
+.p-w{width:auto;font-size:14px;max-width:96px}
+.add-person{display:flex;gap:8px;margin-top:10px}
+.person.flash{animation:flash 1.2s ease-out}
+@keyframes flash{from{background:var(--accent-soft)}to{background:transparent}}
+
+/* forms */
+.item-form{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:14px;display:grid;gap:12px}
+.item-form.editing{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+.form-title{display:flex;justify-content:space-between;align-items:center;gap:8px;font-family:var(--font-display);font-size:16px}
+.quick{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;margin-inline:-14px;padding-inline:14px}
+.quick::-webkit-scrollbar{display:none}
+.row-price{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:end}
+.row2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.stepper{display:flex;border:1px solid var(--line);border-radius:10px;overflow:hidden;background:var(--surface);height:42px}
+.stepper button{width:40px;border:0;background:var(--surface-2);font-size:18px}
+.stepper input{width:46px;border:0;background:transparent;text-align:center;font-family:var(--font-num);font-size:16px}
+.stepper input:focus{outline:none;background:var(--accent-soft)}
+.line-total{display:flex;justify-content:flex-end;align-items:baseline;gap:6px;font-size:14px;color:var(--muted);margin-top:-4px}
+.line-total b{font-family:var(--font-num);font-size:18px;color:var(--ink);font-weight:600}
+.pick{display:flex;flex-wrap:wrap;gap:6px}
+.form-actions{display:flex;gap:8px}
+.form-actions .primary{flex:1}
+
+/* item list */
+.items{margin-top:14px}
+.item{display:grid;grid-template-columns:10px minmax(0,1fr) auto;gap:2px 10px;padding:12px;align-items:start}
+.item + .item{border-top:1px solid var(--line)}
+.item.editing{background:var(--accent-soft)}
+.dot{width:10px;height:10px;border-radius:50%;background:var(--c);margin-top:8px;flex:none}
+.it-name{font-weight:500;overflow-wrap:anywhere}
+.it-meta{font-size:13px;color:var(--muted);overflow-wrap:anywhere}
+.it-warn{font-size:13px;color:var(--bad)}
+.it-side{display:flex;flex-direction:column;align-items:flex-end;gap:2px}
+.it-amt{font-family:var(--font-num);font-weight:600;font-size:16px;font-variant-numeric:tabular-nums}
+.it-act{display:flex;gap:2px}
+.items-foot{display:flex;justify-content:space-between;align-items:baseline;padding:10px 12px 0;color:var(--muted);font-size:14px}
+.items-foot b{font-family:var(--font-num);color:var(--ink);font-size:16px}
+.empty-note{padding:14px;border:1px dashed var(--line);border-radius:14px;color:var(--muted);font-size:14px}
+.more{display:flex;flex-wrap:wrap;gap:8px}
+
+/* receipt */
+.receipt{background:var(--receipt);border-radius:16px 16px 0 0;padding:20px 18px 36px;
+  -webkit-mask:conic-gradient(from -45deg at bottom,#0000,#000 1deg 89deg,#0000 90deg) 50%/16px 100%;
+  mask:conic-gradient(from -45deg at bottom,#0000,#000 1deg 89deg,#0000 90deg) 50%/16px 100%}
+.r-eyebrow{font-size:12px;letter-spacing:.08em;color:var(--muted)}
+.r-title{font-family:var(--font-display);font-size:20px;font-weight:500;overflow-wrap:anywhere}
+.r-date{font-size:13px;color:var(--muted)}
+.r-total{display:flex;justify-content:space-between;align-items:baseline;gap:10px;margin-top:14px}
+.r-total span{font-size:14px;color:var(--muted)}
+.r-total b{font-family:var(--font-num);font-size:36px;font-weight:600;line-height:1.1;font-variant-numeric:tabular-nums}
+.r-sub{text-align:right;font-size:13px;color:var(--muted)}
+.r-lines{display:grid;gap:2px;margin:6px 0 4px;font-size:14px}
+.r-lines div{display:flex;justify-content:space-between;gap:10px}
+.r-lines .num{font-weight:500}
+.r-lines .minus{color:var(--good)}
+.r-lines .strong{font-weight:600;border-top:1px dotted var(--line);padding-top:4px;margin-top:2px}
+.r-lines .warn{color:var(--bad);font-size:13px}
+.dash{border:0;border-top:1.5px dashed var(--line);margin:18px 0}
+.receipt h3{font-size:16px;margin-bottom:8px}
+.catbar{display:flex;gap:2px;height:10px;border-radius:99px;overflow:hidden;margin-top:14px;background:var(--surface-2)}
+.catbar:empty{display:none}
+.catbar span{background:var(--c);min-width:3px}
+.legend{list-style:none;margin:10px 0 0;padding:0;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px 16px;font-size:13px}
+.legend li{display:flex;align-items:center;gap:6px;min-width:0}
+.legend .lbl{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--muted)}
+.legend .dot{margin-top:0;width:8px;height:8px}
+
+.ptable{display:grid}
+.p-headrow,.prow-btn{display:grid;grid-template-columns:minmax(0,1fr) auto 8.5em;gap:10px;align-items:center}
+.p-headrow{font-size:12px;color:var(--muted);padding-bottom:4px;border-bottom:1px solid var(--line)}
+.p-headrow span:nth-child(n+2){text-align:right}
+.prow{border-bottom:1px dotted var(--line)}
+.prow-btn{width:100%;border:0;background:transparent;text-align:left;padding:9px 0}
+.pr-name{min-width:0;overflow-wrap:anywhere;font-weight:500}
+.pr-name small{font-weight:400;font-size:12px;color:var(--muted);margin-left:4px;white-space:nowrap}
+.pr-share{font-family:var(--font-num);font-variant-numeric:tabular-nums;text-align:right;font-weight:500}
+.pr-net{justify-self:end}
+.net{display:inline-block;font-size:12.5px;padding:2px 8px;border-radius:99px;white-space:nowrap;font-variant-numeric:tabular-nums}
+.net.owe{background:var(--bad-soft);color:var(--bad)}
+.net.back{background:var(--good-soft);color:var(--good)}
+.net.even{background:var(--surface-2);color:var(--muted)}
+.pr-detail{padding:0 0 12px;font-size:13px;color:var(--muted);display:grid;gap:3px}
+.pr-detail div{display:flex;justify-content:space-between;gap:10px}
+.pr-detail .num{color:var(--ink)}
+.pr-detail .dline{display:flex;align-items:center;gap:6px}
+.pr-detail .dot{margin-top:0;width:8px;height:8px}
+.pr-detail .sep{border-top:1px dotted var(--line);padding-top:4px;margin-top:2px}
+
+.tr-head{display:flex;justify-content:space-between;align-items:baseline;gap:10px;margin-bottom:8px}
+.tr-head h3{margin:0}
+.progress{font-size:13px;color:var(--muted)}
+.roundctl{display:grid;gap:6px;margin-bottom:10px}
+.roundctl span{font-size:13px;color:var(--muted)}
+.transfers{list-style:none;margin:0;padding:0;display:grid;gap:8px}
+.tr{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px 10px;align-items:center;padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:var(--surface)}
+.tr.me-from{border-color:var(--bad);box-shadow:0 0 0 2px var(--bad-soft)}
+.tr.me-to{border-color:var(--good);box-shadow:0 0 0 2px var(--good-soft)}
+.tr-who{min-width:0;overflow-wrap:anywhere;font-weight:500}
+.tr-who .arrow{color:var(--muted);font-weight:400;margin:0 4px}
+.tr-who small{display:block;font-weight:500;font-size:12px}
+.tr.me-from .tr-who small{color:var(--bad)}
+.tr.me-to .tr-who small{color:var(--good)}
+.tr-amt{font-family:var(--font-num);font-weight:600;font-size:17px;text-align:right;font-variant-numeric:tabular-nums}
+.tr-act{grid-column:1/-1;display:flex;flex-wrap:wrap;justify-content:flex-end;align-items:center;gap:8px}
+.tr-act .link{margin-right:auto}
+.paid-list{list-style:none;margin:10px 0 0;padding:0;display:grid;gap:4px;font-size:13px}
+.paid-list li{display:flex;justify-content:space-between;align-items:center;gap:8px;color:var(--muted)}
+.paid-list .who{min-width:0;overflow-wrap:anywhere}
+.paid-list .who b{color:var(--ink);font-weight:500}
+.paid-list .num{color:var(--good);font-weight:600}
+.round-note{margin-top:8px}
+.none-note{padding:12px;border:1px dashed var(--line);border-radius:12px;font-size:14px;color:var(--muted);list-style:none}
+.share{display:grid;gap:10px}
+.preview summary{cursor:pointer;font-size:14px;color:var(--muted)}
+.preview textarea{width:100%;min-height:220px;margin-top:8px;padding:10px;border:1px solid var(--line);border-radius:10px;background:var(--surface);font-size:13px;line-height:1.6;resize:vertical}
+
+/* bottom bar */
+.bar{position:fixed;left:0;right:0;bottom:0;z-index:20;display:flex;align-items:center;justify-content:space-between;gap:12px;
+  padding:10px 16px calc(10px + env(safe-area-inset-bottom,0px));background:var(--surface);border-top:1px solid var(--line);box-shadow:0 -4px 16px var(--shadow)}
+.bar>div{min-width:0}
+.bar .b-total{font-family:var(--font-num);font-size:22px;font-weight:600;line-height:1.1}
+.bar .b-total.owe{color:var(--bad)}
+.bar .b-total.back{color:var(--good)}
+.bar .b-sub{font-size:12.5px;color:var(--muted);overflow-wrap:anywhere}
+
+/* toast */
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(84px + env(safe-area-inset-bottom,0px));z-index:40;
+  display:flex;align-items:center;gap:12px;width:max-content;max-width:calc(100% - 32px);padding:10px 14px;border-radius:12px;background:var(--ink);color:var(--bg);font-size:14px;box-shadow:0 6px 20px var(--shadow)}
+.toast button{border:0;background:none;color:var(--accent);font-weight:600;padding:2px 4px;white-space:nowrap}
+
+/* modal */
+.modal{position:fixed;inset:0;z-index:50;display:flex;align-items:flex-end;justify-content:center;padding:16px;padding-bottom:calc(16px + env(safe-area-inset-bottom,0px));background:var(--scrim)}
+.sheet{width:100%;max-width:380px;background:var(--surface);border-radius:18px;padding:16px 18px 20px;display:grid;gap:12px}
+.sheet-head{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.sheet-head h3{font-size:18px}
+.qr-box{width:min(250px,100%);margin:0 auto;background:var(--qr-bg);padding:10px;border-radius:12px}
+.qr-box svg{display:block;width:100%;height:auto}
+.qr-box p{color:#333;text-align:center;padding:20px 6px;margin:0}
+.qr-amt{text-align:center;font-family:var(--font-num);font-size:30px;font-weight:600;line-height:1.1}
+.qr-id{display:flex;justify-content:center;align-items:center;gap:10px;flex-wrap:wrap;font-family:var(--font-num)}
+.sheet .hint{text-align:center}
+
+@media (max-width:440px){ .seg.modes{grid-template-columns:repeat(2,minmax(0,1fr))} }
+@media (max-width:350px){
+  .row2{grid-template-columns:1fr}
+  .p-headrow,.prow-btn{grid-template-columns:minmax(0,1fr) auto}
+  .p-headrow span:nth-child(3){display:none}
+  .pr-net{grid-column:1/-1;justify-self:start}
+}
+@media (min-width:600px){ .modal{align-items:center} .title-input{font-size:34px} }
+@media (min-width:960px){
+  .app{padding-block:24px 48px}
+  .cols{grid-template-columns:minmax(0,1fr) 410px;gap:40px;align-items:start}
+  .col-summary{position:sticky;top:16px;max-height:calc(100vh - 32px);overflow:auto;scrollbar-width:thin}
+  .bar{display:none!important}
+  .toast{bottom:24px}
+}
+@media (prefers-reduced-motion: reduce){ *{animation:none!important;transition:none!important;scroll-behavior:auto!important} }
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="top">
+    <div class="brand-row">
+      <button type="button" class="brand" id="homeLink" aria-label="กลับหน้าแรก">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9.5" fill="none" stroke="currentColor" stroke-width="3" stroke-dasharray="2.1 1.6"/><circle cx="12" cy="12" r="5.2" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>
+        คิดค่าเหล้า
+      </button>
+      <div class="me" id="meChip"></div>
+    </div>
+    <div id="banners" style="display:grid;gap:8px"></div>
+  </header>
+
+  <main id="loading" class="loading">กำลังเปิด…</main>
+
+  <!-- หน้าแรก -->
+  <main id="home" class="home" hidden>
+    <form class="card" id="newBill" autocomplete="off">
+      <h1>เริ่มบิลใหม่</h1>
+      <p class="hint">สร้างบิลแล้วส่งเข้ากลุ่ม LINE ให้เพื่อนช่วยกันใส่ค่าใช้จ่าย ทุกคนเห็นยอดเดียวกันและกดยืนยันการโอนเองได้</p>
+      <label class="field"><span>ชื่องาน</span><input id="nbTitle" class="inp" placeholder="เช่น วงเหล้าศุกร์นี้" maxlength="60"></label>
+      <label class="field"><span>วันที่</span><input id="nbDate" type="date" class="inp"></label>
+      <button type="submit" class="btn primary wide" id="nbSubmit">สร้างบิล</button>
+    </form>
+    <section aria-labelledby="hRecent">
+      <div class="sec-head"><h2 id="hRecent">บิลที่เคยเปิด</h2></div>
+      <ul class="items" id="recent" style="margin-top:0"></ul>
+      <p class="hint" id="recentEmpty">ยังไม่มีบิลที่เคยเปิดในเครื่องนี้</p>
+    </section>
+  </main>
+
+  <!-- ไม่พบบิล -->
+  <main id="notFound" class="home" hidden>
+    <div class="card">
+      <h1>ไม่พบบิลนี้</h1>
+      <p class="hint" id="notFoundMsg">ลิงก์อาจไม่ครบ หรือบิลนี้สร้างไว้ในโหมดทดลองบนเครื่องอื่น</p>
+      <button type="button" class="btn primary" id="nfHome">กลับหน้าแรก</button>
+    </div>
+  </main>
+
+  <!-- หน้าบิล -->
+  <main id="billView" class="cols" hidden>
+    <div class="col-input">
+      <section class="bill-head" aria-label="ข้อมูลบิล">
+        <input id="title" class="title-input" aria-label="ชื่องาน" placeholder="ตั้งชื่องาน" maxlength="60">
+        <div class="meta">
+          <label for="date">วันที่</label>
+          <input id="date" type="date" class="inp date">
+          <span id="dateTh"></span>
+        </div>
+        <div class="share-row">
+          <button type="button" class="btn primary" id="inviteBtn">ชวนเพื่อนในกลุ่ม LINE</button>
+          <button type="button" class="btn" id="copyLinkBtn">คัดลอกลิงก์บิล</button>
+        </div>
+      </section>
+
+      <section class="whoami" id="whoami" hidden aria-labelledby="hWho">
+        <h2 id="hWho">คุณคือใครในบิลนี้</h2>
+        <p class="hint">แตะชื่อของคุณ ระบบจะได้บอกว่าคุณต้องโอนให้ใคร</p>
+        <div class="pick" id="whoPick"></div>
+      </section>
+
+      <section aria-labelledby="hPeople">
+        <div class="sec-head"><h2 id="hPeople">ใครมาบ้าง</h2><span class="count" id="peopleCount"></span></div>
+        <p class="hint sec-hint">แตะ "ดื่ม" เพื่อสลับเป็นคนไม่ดื่ม · ตั้งสัดส่วน "ครึ่ง" ให้คนที่มาสายหรือกลับก่อน · ใส่เบอร์พร้อมเพย์ของคนที่สำรองจ่ายเพื่อสร้าง QR</p>
+        <ul class="people" id="peopleList"></ul>
+        <form class="add-person" id="addPerson" autocomplete="off">
+          <input id="newPerson" class="inp" placeholder="พิมพ์ชื่อ (หลายคนคั่นด้วย , )" aria-label="ชื่อคนที่จะเพิ่ม">
+          <button class="btn" type="submit">เพิ่มคน</button>
+        </form>
+      </section>
+
+      <section aria-labelledby="hItems">
+        <div class="sec-head"><h2 id="hItems">รายการค่าใช้จ่าย</h2><span class="count" id="itemCount"></span></div>
+        <form class="item-form" id="itemForm" novalidate autocomplete="off">
+          <div class="form-title"><span id="formTitle">เพิ่มรายการ</span></div>
+          <p class="hint" id="noPeople" hidden>เพิ่มรายชื่อคนก่อน แล้วค่อยใส่รายการ</p>
+          <div class="quick" id="quick" aria-label="รายการที่ใช้บ่อย"></div>
+          <label class="field"><span>ชื่อรายการ</span><input id="fName" class="inp" placeholder="เช่น เบียร์ขวดใหญ่" maxlength="60"></label>
+          <div class="row-price">
+            <label class="field"><span>ราคาต่อหน่วย (บาท)</span><input id="fPrice" class="inp num" inputmode="decimal" placeholder="0"></label>
+            <div class="field"><span id="qtyLbl">จำนวน</span>
+              <div class="stepper" role="group" aria-labelledby="qtyLbl">
+                <button type="button" id="qMinus" aria-label="ลดจำนวน">−</button>
+                <input id="fQty" inputmode="numeric" value="1" aria-label="จำนวน">
+                <button type="button" id="qPlus" aria-label="เพิ่มจำนวน">+</button>
+              </div>
+            </div>
+          </div>
+          <div class="line-total">รวม <b id="fTotal">0</b> บาท</div>
+          <div class="row2">
+            <label class="field"><span>หมวด</span><select id="fCat" class="inp"></select></label>
+            <label class="field"><span>ใครจ่ายไปก่อน</span><select id="fPayer" class="inp"></select></label>
+          </div>
+          <fieldset class="field">
+            <legend>หารกับใคร</legend>
+            <div class="seg modes" id="fMode"></div>
+            <div class="pick" id="fMembers" hidden></div>
+            <label class="field" id="fTreatWrap" hidden><span>ใครเลี้ยงรายการนี้</span><select id="fTreater" class="inp"></select></label>
+            <p class="hint" id="fModeHint"></p>
+          </fieldset>
+          <p class="error" id="fError" hidden></p>
+          <div class="form-actions">
+            <button type="submit" class="btn primary" id="fSubmit">เพิ่มรายการ</button>
+            <button type="button" class="btn ghost" id="fCancel" hidden>ยกเลิก</button>
+          </div>
+        </form>
+        <ul class="items" id="itemList"></ul>
+        <div class="items-foot" id="itemsFoot"></div>
+      </section>
+
+      <section aria-labelledby="hContrib">
+        <div class="sec-head"><h2 id="hContrib">เงินสมทบ</h2><span class="count" id="contribCount"></span></div>
+        <p class="hint sec-hint">มีคนออกเงินให้ก้อนหนึ่งโดยไม่ระบุว่าเป็นค่าอะไร ใส่ตรงนี้ ระบบจะหักเงินก้อนนี้ออกจากยอดรวมก่อนหาร แล้วนับเป็นส่วนที่คนออกต้องจ่ายเพิ่ม</p>
+        <form class="item-form" id="cForm" novalidate autocomplete="off">
+          <div class="form-title"><span id="cFormTitle">เพิ่มเงินสมทบ</span></div>
+          <div class="row2">
+            <label class="field"><span>ใครออกให้</span><select id="cFrom" class="inp"></select></label>
+            <label class="field"><span>จำนวนเงิน (บาท)</span><input id="cAmt" class="inp num" inputmode="decimal" placeholder="0"></label>
+          </div>
+          <fieldset class="field">
+            <legend>หักให้ใคร</legend>
+            <div class="seg seg3" id="cMode"></div>
+            <div class="pick" id="cMembers" hidden></div>
+            <p class="hint" id="cModeHint"></p>
+          </fieldset>
+          <label class="field"><span>ให้เงินก้อนนี้ไปแล้วหรือยัง</span><select id="cHanded" class="inp"></select></label>
+          <p class="error" id="cError" hidden></p>
+          <div class="form-actions">
+            <button type="submit" class="btn primary" id="cSubmit">เพิ่มเงินสมทบ</button>
+            <button type="button" class="btn ghost" id="cCancel" hidden>ยกเลิก</button>
+          </div>
+        </form>
+        <ul class="items" id="cList"></ul>
+      </section>
+
+      <section aria-labelledby="hMore">
+        <div class="sec-head"><h2 id="hMore">บิลถัดไป</h2></div>
+        <p class="hint sec-hint">จะไปต่ออีกร้าน หรือนัดครั้งหน้ากับกลุ่มเดิม สร้างบิลใหม่โดยใช้รายชื่อชุดนี้ได้เลย</p>
+        <div class="more">
+          <button type="button" class="btn" id="newWithPeople">สร้างบิลใหม่ ใช้รายชื่อเดิม</button>
+          <button type="button" class="btn ghost" id="toHome">กลับหน้าแรก</button>
+        </div>
+      </section>
+    </div>
+
+    <aside class="col-summary" id="summary" aria-labelledby="rEyebrow">
+      <div class="receipt">
+        <div class="r-eyebrow" id="rEyebrow">สรุปบิล</div>
+        <div class="r-title" id="rTitle"></div>
+        <div class="r-date" id="rDate"></div>
+        <div class="r-total"><span>ยอดรวม (บาท)</span><b id="rTotal">0</b></div>
+        <div class="r-lines" id="rLines" hidden></div>
+        <div class="r-sub" id="rSub"></div>
+        <div class="catbar" id="catBar" aria-hidden="true"></div>
+        <ul class="legend" id="catLegend"></ul>
+
+        <hr class="dash">
+        <h3>แต่ละคนต้องจ่าย</h3>
+        <div class="ptable" id="pTable"></div>
+        <p class="hint" style="margin-top:8px">แตะชื่อเพื่อดูว่าจ่ายค่าอะไรบ้าง</p>
+
+        <hr class="dash">
+        <div class="tr-head"><h3 id="trTitle">ใครโอนให้ใคร</h3><span class="progress" id="trProgress"></span></div>
+        <div class="roundctl">
+          <span id="roundLbl">ปัดยอดโอนขึ้นเป็นหลัก</span>
+          <div class="seg" id="roundSeg" role="group" aria-labelledby="roundLbl"></div>
+        </div>
+        <ul class="transfers" id="trList"></ul>
+        <p class="hint round-note" id="roundNote"></p>
+        <ul class="paid-list" id="paidList"></ul>
+
+        <hr class="dash">
+        <div class="share">
+          <button type="button" class="btn primary wide" id="sendSummary">ส่งสรุปเข้ากลุ่ม LINE</button>
+          <button type="button" class="btn wide" id="copyBtn">คัดลอกสรุปเป็นข้อความ</button>
+          <details class="preview" id="preview">
+            <summary>ดูข้อความที่จะคัดลอก</summary>
+            <textarea id="copyText" readonly aria-label="ข้อความสรุป"></textarea>
+          </details>
+        </div>
+      </div>
+    </aside>
+  </main>
+</div>
+
+<div class="bar" id="bar" hidden>
+  <div>
+    <div class="b-total" id="bTotal">฿0</div>
+    <div class="b-sub" id="bSub"></div>
+  </div>
+  <button type="button" class="btn primary" id="toSummary">ดูว่าใครโอนให้ใคร</button>
+</div>
+
+<div class="toast" id="toast" role="status" aria-live="polite" hidden><span id="toastMsg"></span><button type="button" id="toastUndo" hidden>เลิกทำ</button></div>
+
+<div class="modal" id="qrModal" hidden>
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="qrTitle">
+    <div class="sheet-head"><h3 id="qrTitle">โอนให้</h3><button type="button" class="icon-btn" id="qrClose" aria-label="ปิด">×</button></div>
+    <div class="qr-box" id="qrBox"></div>
+    <div class="qr-amt" id="qrAmt"></div>
+    <div class="qr-id"><span id="qrId"></span><button type="button" class="btn ghost small" id="qrCopy">คัดลอกเลข</button></div>
+    <p class="hint">สแกนด้วยแอปธนาคาร ยอดเงินใส่ไว้ให้แล้ว</p>
+  </div>
+</div>
+
+<script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
+<script type="module" src="./app.js"></script>
+</body>
+</html>
