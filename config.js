@@ -1,7 +1,7 @@
 // ===== ค่าที่ต้องใส่เอง (ดูขั้นตอนในคู่มือ README.md) =====
 
 // 1) LIFF ID ของ LINE MINI App (แท็บ "Published") หน้าตาประมาณ 2001234567-AbCdEfGh
-export const LIFF_ID = 'ใส่ LIFF ID ตรงนี้';
+export const LIFF_ID = '2011845213-5peZhGH8';
 
 // 2) ค่าจาก Firebase: วางทับทั้งก้อน { ... } ด้วยค่าที่คัดลอกมาจาก Firebase console
 export const FIREBASE_CONFIG = {
