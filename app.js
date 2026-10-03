@@ -860,6 +860,19 @@ function flexMessage(kind, link) {
   } else {
     body.push({ type: 'text', text: 'มาช่วยกันใส่ค่าใช้จ่ายในบิลนี้ แล้วระบบจะคิดให้ว่าใครต้องโอนให้ใครเท่าไร', size: 'sm', color: MUTED, margin: 'lg', wrap: true });
   }
+  if (kind === 'summary' && r.payments.length) {
+    const paid = r.payments.slice().sort((a, b2) => (a.at || 0) - (b2.at || 0));
+    const shownPaid = paid.slice(0, 10);
+    const paidRow = pm => ({
+      type: 'box', layout: 'horizontal', spacing: 'md', contents: [
+        { type: 'text', text: `✓ ${nameOf(pm.from)} → ${nameOf(pm.to)}`, size: 'sm', color: GOOD, flex: 5, wrap: true },
+        { type: 'text', text: money(pm.paid || pm.amt), size: 'sm', color: GOOD, align: 'end', flex: 3 }
+      ]
+    });
+    body.push({ type: 'text', text: `โอนแล้ว (${paid.length})`, size: 'sm', weight: 'bold', color: GOOD, margin: 'lg' });
+    body.push({ type: 'box', layout: 'vertical', spacing: 'xs', margin: 'sm', contents: shownPaid.map(paidRow) });
+    if (paid.length > shownPaid.length) body.push({ type: 'text', text: `และอีก ${paid.length - shownPaid.length} รายการ`, size: 'xs', color: MUTED });
+  }
   return {
     type: 'flex',
     altText: `คิดค่าเหล้า: ${title} · ยอดรวม ${money(r.total)} บาท`.slice(0, 380),
