@@ -896,7 +896,7 @@ function settleStatus() {
   const owe = r.transfers.map((t, i) => ({ t, icon: FUN.oweIcons[i % FUN.oweIcons.length], line: oweLines[i % oweLines.length] }));
   /* เหรียญให้ 3 คนแรกที่โอน นับตามคน (คนที่โอนหลายรายการได้เหรียญแค่ที่รายการแรก) */
   const MEDALS = [
-    { icon: '🥇', line: 'โอนไวที่สุดในวง' },
+    { icon: '🥇', line: 'โอนไวที่สุดในวง คุณคือรักแท้ที่ตามหา' },
     { icon: '🥈', line: 'โอนไวอันดับ 2 ตู้ ATM เคลื่อนที่' },
     { icon: '🥉', line: 'โอนไวอันดับ 3 กำลังคนคุณภาพ' }
   ];
