@@ -754,15 +754,20 @@ function buildText(link) {
     r.contribs.forEach(c => out.push(`- ${nameOf(c.from)} ออกให้ ${money(Math.round(c.amt * 100))} บาท (${contribLabel(c).text}${c.handed ? `, ให้เงินสดกับ ${nameOf(c.handed)} แล้ว` : ''})`));
   }
   out.push('');
-  if (r.transfers.length) {
-    out.push(`ยังต้องโอน${b.round ? ` (ปัดขึ้นเป็นหลัก ${b.round} บาท)` : ''}`);
-    r.transfers.forEach(t => out.push(`- ${nameOf(t.from)} โอนให้ ${nameOf(t.to)} ${money(t.pay)} บาท`));
+  const s = settleStatus();
+  if (s.active) {
+    const n = s.done + s.left, cells = Math.min(10, n), fill = Math.round(cells * s.done / n);
+    out.push(s.headline, s.subline, `โอนแล้ว ${s.done}/${n} ${'🟩'.repeat(fill)}${'⬜'.repeat(cells - fill)}`);
+  }
+  if (s.owe.length) {
+    out.push('', `🐢 ยังไม่โอน${b.round ? ` (ปัดขึ้นเป็นหลัก ${b.round} บาท)` : ''}`);
+    s.owe.forEach(o => out.push(`- ${o.icon} ${nameOf(o.t.from)} โอนให้ ${nameOf(o.t.to)} ${money(o.t.pay)} บาท · ${o.line}`));
     const pps = [...new Set(r.transfers.map(t => t.to))].map(id => P.find(p => p.id === id)).filter(p => p && ppKind(p.pp));
     if (pps.length) { out.push('', 'พร้อมเพย์'); pps.forEach(p => out.push(`- ${nameOf(p.id)} ${ppPretty(p.pp)}`)); }
-  } else out.push(r.payments.length ? 'โอนครบทุกคนแล้ว' : 'ไม่ต้องโอน ทุกคนจ่ายพอดีแล้ว');
-  if (r.payments.length) {
-    out.push('', 'โอนแล้ว');
-    r.payments.forEach(pm => out.push(`- ${nameOf(pm.from)} โอนให้ ${nameOf(pm.to)} ${money(pm.paid || pm.amt)} บาท`));
+  } else if (!s.active) out.push('ไม่ต้องโอน ทุกคนจ่ายพอดีแล้ว');
+  if (s.paid.length) {
+    out.push('', '🏆 โอนแล้ว');
+    s.paid.forEach(o => out.push(`- ${o.icon} ${nameOf(o.pm.from)} โอนให้ ${nameOf(o.pm.to)} ${money(o.pm.paid || o.pm.amt)} บาท · ${o.line}`));
   }
   if (r.items.length) {
     out.push('', 'รายการ');
@@ -828,6 +833,67 @@ function refreshLink() {
     .catch(e => console.warn('createUrlBy', e));
 }
 const currentLink = () => app.link || fallbackLink();
+
+/* ---------- คำแซวและคำชมในสรุป (แบบขำๆ) ---------- */
+const FUN = {
+  owe: [
+    'เจ้าหนี้มองอยู่นะ 👀',
+    'หนี้ไม่หาย ถ้าไม่โอน',
+    'แอปธนาคารอยู่แค่ปลายนิ้ว',
+    'เพื่อนรออยู่… ด้วยใจระทึก',
+    'ขอแค่โอน ไม่ขอใจ',
+    'บัญชีนี้กำลังถูกจับตา 🔍',
+    'โอนช้า ระวังโดนแซวทั้งปี',
+    'กดแป๊บเดียวเอง ไม่เหนื่อยหรอก'
+  ],
+  oweIcons: ['😬', '🐢', '😅', '🙈'],
+  paid: [
+    'สายเปย์ตัวจริง 👑',
+    'เครดิตดีเยี่ยม ยืมใหม่ได้',
+    'คนดีของวง',
+    'ใจถึง พึ่งได้',
+    'เพื่อนแบบนี้หาที่ไหน',
+    'รอบหน้าชวนก่อนเลย',
+    'ตรงเวลาเหมือนนาฬิกาสวิส ⌚'
+  ],
+  allDone: [
+    'วงนี้ไม่มีใครค้าง ไปต่อร้านสองได้ 🍻',
+    'ยกแก้วให้ความตรงเวลา 🥂',
+    'เพื่อนแบบนี้แหละที่ตามหา'
+  ]
+};
+/* สุ่มลำดับแบบคงที่ตามสถานะบิล: ข้อความไม่กระโดดไปมาระหว่างดู แต่เปลี่ยนเมื่อมีคนโอนเพิ่ม */
+function seededShuffle(list, seedStr) {
+  let h = 2166136261;
+  for (const ch of seedStr) { h ^= ch.codePointAt(0); h = Math.imul(h, 16777619) >>> 0; }
+  const a = list.slice();
+  for (let i = a.length - 1; i > 0; i--) {
+    h = (Math.imul(h, 1664525) + 1013904223) >>> 0;
+    const j = h % (i + 1);
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+function settleStatus() {
+  const r = app.calc;
+  const seed = `${app.billId}:${r.payments.length}:${r.transfers.length}`;
+  const oweLines = seededShuffle(FUN.owe, seed + 'o');
+  const paidLines = seededShuffle(FUN.paid, seed + 'p');
+  const owe = r.transfers.map((t, i) => ({ t, icon: FUN.oweIcons[i % FUN.oweIcons.length], line: oweLines[i % oweLines.length] }));
+  const paid = r.payments.slice().sort((a, b) => (a.at || 0) - (b.at || 0)).map((pm, i) => i === 0
+    ? { pm, icon: '🥇', line: 'โอนไวที่สุดในวง' }
+    : { pm, icon: '✅', line: paidLines[(i - 1) % paidLines.length] });
+  const debtors = [...new Set(r.transfers.map(t => t.from))];
+  const payers = new Set(r.payments.map(p => p.from));
+  const done = r.payments.length, left = r.transfers.length;
+  const allDone = done > 0 && left === 0;
+  let headline, subline;
+  if (allDone) { headline = '🎉 เคลียร์ครบทุกคน!'; subline = seededShuffle(FUN.allDone, seed)[0]; }
+  else if (done) { headline = `⏳ ยังค้างอีก ${debtors.length} คน`; subline = `โอนแล้ว ${payers.size} คน ที่เหลือรีบตามมานะ 👀`; }
+  else { headline = `⏳ รอโอนอีก ${debtors.length} คน`; subline = 'ใครโอนคนแรก ได้เหรียญทอง 🥇'; }
+  return { active: done + left > 0, allDone, done, left, owe, paid, headline, subline, debtorNames: debtors.map(nameOf) };
+}
+
 function flexMessage(kind, link) {
   const r = app.calc, b = app.bill;
   const INK = '#13222A', MUTED = '#566870', ACCENT = '#8A5100', GOOD = '#1F7346';
@@ -850,40 +916,79 @@ function flexMessage(kind, link) {
     totals.push(row('ที่ต้องหารกัน', signed(r.total - r.contribTotal) + ' บาท', true));
   }
   body.push({ type: 'box', layout: 'vertical', spacing: 'xs', margin: 'md', contents: totals });
-  if (kind === 'summary' && r.transfers.length) {
-    const shown = r.transfers.slice(0, 12);
-    body.push({ type: 'text', text: 'ยังต้องโอน', size: 'sm', weight: 'bold', color: INK, margin: 'lg' });
-    body.push({ type: 'box', layout: 'vertical', spacing: 'xs', margin: 'sm', contents: shown.map(t => row(`${nameOf(t.from)} → ${nameOf(t.to)}`, money(t.pay), true)) });
-    if (r.transfers.length > shown.length) body.push({ type: 'text', text: `และอีก ${r.transfers.length - shown.length} รายการ`, size: 'xs', color: MUTED });
-  } else if (kind === 'summary' && r.items.length) {
-    body.push({ type: 'text', text: r.payments.length ? 'โอนครบทุกคนแล้ว' : 'ทุกคนจ่ายพอดีแล้ว ไม่ต้องโอน', size: 'sm', weight: 'bold', color: GOOD, margin: 'lg', wrap: true });
-  } else {
+  const s = kind === 'summary' ? settleStatus() : null;
+  let header = null, altText = `คิดค่าเหล้า: ${title} · ยอดรวม ${money(r.total)} บาท`, button = kind === 'summary' ? 'เปิดบิล' : 'เปิดบิลแล้วช่วยกันใส่';
+
+  if (s && s.active) {
+    /* แถบสีด้านบน: แดงตอนยังมีคนค้าง เขียวตอนเคลียร์ครบ พร้อมหลอดความคืบหน้า */
+    const WHITE = '#FFFFFF';
+    const bar = [];
+    if (s.done) bar.push({ type: 'box', layout: 'vertical', flex: s.done, backgroundColor: WHITE, cornerRadius: '4px', contents: [] });
+    if (s.left) bar.push({ type: 'box', layout: 'vertical', flex: s.left, contents: [] });
+    header = {
+      type: 'box', layout: 'vertical', spacing: 'xs', paddingAll: '20px',
+      backgroundColor: s.allDone ? '#1F7346' : '#B8432F',
+      contents: [
+        { type: 'text', text: s.headline, size: 'xl', weight: 'bold', color: WHITE, wrap: true },
+        { type: 'text', text: s.subline, size: 'sm', color: '#FFFFFFE6', wrap: true },
+        { type: 'box', layout: 'horizontal', height: '8px', cornerRadius: '4px', backgroundColor: '#FFFFFF59', margin: 'md', contents: bar },
+        { type: 'text', text: `โอนแล้ว ${s.done} จาก ${s.done + s.left} รายการ`, size: 'xxs', color: '#FFFFFFCC', margin: 'sm' }
+      ]
+    };
+    altText = s.allDone
+      ? `🎉 ${title} เคลียร์ครบทุกคนแล้ว!`
+      : `คิดค่าเหล้า: ${title} · ยังไม่โอน: ${s.debtorNames.join(', ')} 👀`;
+    button = s.allDone ? 'ดูบิล' : 'เปิดบิล ไปโอนซะ 💸';
+  }
+
+  if (s && s.owe.length) {
+    /* ยังไม่โอน: กล่องสีแดงอ่อน พร้อมคำแซว */
+    const RED = '#AE3828';
+    const shown = s.owe.slice(0, 10);
+    body.push({ type: 'text', text: `🐢 ยังไม่โอน (${s.owe.length})`, size: 'md', weight: 'bold', color: RED, margin: 'xl' });
+    body.push({ type: 'box', layout: 'vertical', spacing: 'sm', margin: 'sm', contents: shown.map(o => ({
+      type: 'box', layout: 'vertical', spacing: 'xs', backgroundColor: '#FDEBE7', cornerRadius: 'md', paddingAll: 'md',
+      contents: [
+        { type: 'box', layout: 'horizontal', spacing: 'md', contents: [
+          { type: 'text', text: `${o.icon} ${nameOf(o.t.from)} → ${nameOf(o.t.to)}`, size: 'sm', weight: 'bold', color: RED, flex: 5, wrap: true },
+          { type: 'text', text: money(o.t.pay), size: 'sm', weight: 'bold', color: RED, align: 'end', flex: 3 }
+        ] },
+        { type: 'text', text: o.line, size: 'xs', color: '#B4594A', wrap: true }
+      ]
+    })) });
+    if (s.owe.length > shown.length) body.push({ type: 'text', text: `และอีก ${s.owe.length - shown.length} รายการ`, size: 'xs', color: MUTED });
+  } else if (kind === 'summary' && r.items.length && !r.payments.length) {
+    body.push({ type: 'text', text: 'ทุกคนจ่ายพอดีแล้ว ไม่ต้องโอน', size: 'sm', weight: 'bold', color: GOOD, margin: 'lg', wrap: true });
+  } else if (kind !== 'summary') {
     body.push({ type: 'text', text: 'มาช่วยกันใส่ค่าใช้จ่ายในบิลนี้ แล้วระบบจะคิดให้ว่าใครต้องโอนให้ใครเท่าไร', size: 'sm', color: MUTED, margin: 'lg', wrap: true });
   }
-  if (kind === 'summary' && r.payments.length) {
-    const paid = r.payments.slice().sort((a, b2) => (a.at || 0) - (b2.at || 0));
-    const shownPaid = paid.slice(0, 10);
-    const paidRow = pm => ({
-      type: 'box', layout: 'horizontal', spacing: 'md', contents: [
-        { type: 'text', text: `✓ ${nameOf(pm.from)} → ${nameOf(pm.to)}`, size: 'sm', color: GOOD, flex: 5, wrap: true },
-        { type: 'text', text: money(pm.paid || pm.amt), size: 'sm', color: GOOD, align: 'end', flex: 3 }
+
+  if (s && s.paid.length) {
+    /* โอนแล้ว: กล่องสีเขียวอ่อน พร้อมคำชม คนแรกได้เหรียญทอง */
+    const shown = s.paid.slice(0, 10);
+    body.push({ type: 'text', text: `🏆 โอนแล้ว (${s.paid.length})`, size: 'md', weight: 'bold', color: GOOD, margin: 'xl' });
+    body.push({ type: 'box', layout: 'vertical', spacing: 'sm', margin: 'sm', contents: shown.map(o => ({
+      type: 'box', layout: 'vertical', spacing: 'xs', backgroundColor: '#E3F4E8', cornerRadius: 'md', paddingAll: 'md',
+      contents: [
+        { type: 'box', layout: 'horizontal', spacing: 'md', contents: [
+          { type: 'text', text: `${o.icon} ${nameOf(o.pm.from)} → ${nameOf(o.pm.to)}`, size: 'sm', weight: 'bold', color: GOOD, flex: 5, wrap: true },
+          { type: 'text', text: money(o.pm.paid || o.pm.amt), size: 'sm', weight: 'bold', color: GOOD, align: 'end', flex: 3 }
+        ] },
+        { type: 'text', text: o.line, size: 'xs', color: '#3F8A5C', wrap: true }
       ]
-    });
-    body.push({ type: 'text', text: `โอนแล้ว (${paid.length})`, size: 'sm', weight: 'bold', color: GOOD, margin: 'lg' });
-    body.push({ type: 'box', layout: 'vertical', spacing: 'xs', margin: 'sm', contents: shownPaid.map(paidRow) });
-    if (paid.length > shownPaid.length) body.push({ type: 'text', text: `และอีก ${paid.length - shownPaid.length} รายการ`, size: 'xs', color: MUTED });
+    })) });
+    if (s.paid.length > shown.length) body.push({ type: 'text', text: `และอีก ${s.paid.length - shown.length} รายการ`, size: 'xs', color: MUTED });
   }
-  return {
-    type: 'flex',
-    altText: `คิดค่าเหล้า: ${title} · ยอดรวม ${money(r.total)} บาท`.slice(0, 380),
-    contents: {
-      type: 'bubble',
-      body: { type: 'box', layout: 'vertical', spacing: 'sm', contents: body },
-      footer: { type: 'box', layout: 'vertical', contents: [
-        { type: 'button', style: 'primary', color: '#A85F00', height: 'sm', action: { type: 'uri', label: kind === 'summary' ? 'เปิดบิล' : 'เปิดบิลแล้วช่วยกันใส่', uri: link } }
-      ] }
-    }
+
+  const bubble = {
+    type: 'bubble',
+    body: { type: 'box', layout: 'vertical', spacing: 'sm', contents: body },
+    footer: { type: 'box', layout: 'vertical', contents: [
+      { type: 'button', style: 'primary', color: s && s.active && !s.allDone ? '#B8432F' : '#A85F00', height: 'sm', action: { type: 'uri', label: button, uri: link } }
+    ] }
   };
+  if (header) bubble.header = header;
+  return { type: 'flex', altText: altText.slice(0, 380), contents: bubble };
 }
 async function sendToLine(kind) {
   if (!app.bill) return;
