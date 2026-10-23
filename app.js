@@ -844,9 +844,16 @@ const FUN = {
     'ขอแค่โอน ไม่ขอใจ',
     'บัญชีนี้กำลังถูกจับตา 🔍',
     'โอนช้า ระวังโดนแซวทั้งปี',
-    'กดแป๊บเดียวเอง ไม่เหนื่อยหรอก'
+    'กดแป๊บเดียวเอง ไม่เหนื่อยหรอก',
+    'ร้านปิดไปแล้ว แต่บิลยังไม่ปิด',
+    'เพื่อนไม่ทวง แต่การ์ดนี้ทวงแทน 📢',
+    'โอนเถอะ จะได้นอนหลับสบาย 😴',
+    'ดื่มเก่ง ต้องโอนเก่งด้วยนะ 🍺',
+    'ชื่อยังติดบอร์ดลูกหนี้ 📋',
+    'เมาเมื่อคืนพอเข้าใจ วันนี้โอนได้แล้ว',
+    'ลืมรหัสแอปธนาคารหรือเปล่า? 🤔'
   ],
-  oweIcons: ['😬', '🐢', '😅', '🙈'],
+  oweIcons: ['😬', '🐢', '😅', '🙈', '😳', '⏰', '🥲'],
   paid: [
     'สายเปย์ตัวจริง 👑',
     'เครดิตดีเยี่ยม ยืมใหม่ได้',
@@ -854,7 +861,14 @@ const FUN = {
     'ใจถึง พึ่งได้',
     'เพื่อนแบบนี้หาที่ไหน',
     'รอบหน้าชวนก่อนเลย',
-    'ตรงเวลาเหมือนนาฬิกาสวิส ⌚'
+    'ตรงเวลาเหมือนนาฬิกาสวิส ⌚',
+    'โอนไวกว่าเปิดขวด 🍾',
+    'แบบอย่างที่ดีของวง ✨',
+    'สมควรได้ดื่มฟรีแก้วหน้า 🍻',
+    'เพื่อนในฝันของเจ้าหนี้',
+    'หนี้ศูนย์ ใจฟู 💚',
+    'ไม่ต้องทวงสักคำ',
+    'ความน่าเชื่อถือ 100% 📈'
   ],
   allDone: [
     'วงนี้ไม่มีใครค้าง ไปต่อร้านสองได้ 🍻',
@@ -944,7 +958,7 @@ function flexMessage(kind, link) {
   if (s && s.owe.length) {
     /* ยังไม่โอน: กล่องสีแดงอ่อน พร้อมคำแซว */
     const RED = '#AE3828';
-    const shown = s.owe.slice(0, 10);
+    const shown = s.owe.slice(0, 15);
     body.push({ type: 'text', text: `🐢 ยังไม่โอน (${s.owe.length})`, size: 'md', weight: 'bold', color: RED, margin: 'xl' });
     body.push({ type: 'box', layout: 'vertical', spacing: 'sm', margin: 'sm', contents: shown.map(o => ({
       type: 'box', layout: 'vertical', spacing: 'xs', backgroundColor: '#FDEBE7', cornerRadius: 'md', paddingAll: 'md',
@@ -965,7 +979,7 @@ function flexMessage(kind, link) {
 
   if (s && s.paid.length) {
     /* โอนแล้ว: กล่องสีเขียวอ่อน พร้อมคำชม คนแรกได้เหรียญทอง */
-    const shown = s.paid.slice(0, 10);
+    const shown = s.paid.slice(0, 15);
     body.push({ type: 'text', text: `🏆 โอนแล้ว (${s.paid.length})`, size: 'md', weight: 'bold', color: GOOD, margin: 'xl' });
     body.push({ type: 'box', layout: 'vertical', spacing: 'sm', margin: 'sm', contents: shown.map(o => ({
       type: 'box', layout: 'vertical', spacing: 'xs', backgroundColor: '#E3F4E8', cornerRadius: 'md', paddingAll: 'md',
