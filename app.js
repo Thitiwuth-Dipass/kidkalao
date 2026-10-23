@@ -859,7 +859,7 @@ const FUN = {
     'เครดิตดีเยี่ยม ยืมใหม่ได้',
     'คนดีของวง',
     'ใจถึง พึ่งได้',
-    'เพื่อนแบบนี้หาที่ไหน',
+    'คนแบบนี้หาที่ไหน',
     'รอบหน้าชวนก่อนเลย',
     'ตรงเวลาเหมือนนาฬิกาสวิส ⌚',
     'โอนไวกว่าเปิดขวด 🍾',
@@ -871,9 +871,9 @@ const FUN = {
     'ความน่าเชื่อถือ 100% 📈'
   ],
   allDone: [
-    'วงนี้ไม่มีใครค้าง ไปต่อร้านสองได้ 🍻',
+    'วงนี้ไม่มีใครค้าง ไปกันต่อออ 🍻',
     'ยกแก้วให้ความตรงเวลา 🥂',
-    'เพื่อนแบบนี้แหละที่ตามหา'
+    'คนแบบนี้แหละที่ตามหา'
   ]
 };
 /* สุ่มลำดับแบบคงที่ตามสถานะบิล: ข้อความไม่กระโดดไปมาระหว่างดู แต่เปลี่ยนเมื่อมีคนโอนเพิ่ม */
@@ -894,9 +894,23 @@ function settleStatus() {
   const oweLines = seededShuffle(FUN.owe, seed + 'o');
   const paidLines = seededShuffle(FUN.paid, seed + 'p');
   const owe = r.transfers.map((t, i) => ({ t, icon: FUN.oweIcons[i % FUN.oweIcons.length], line: oweLines[i % oweLines.length] }));
-  const paid = r.payments.slice().sort((a, b) => (a.at || 0) - (b.at || 0)).map((pm, i) => i === 0
-    ? { pm, icon: '🥇', line: 'โอนไวที่สุดในวง' }
-    : { pm, icon: '✅', line: paidLines[(i - 1) % paidLines.length] });
+  /* เหรียญให้ 3 คนแรกที่โอน นับตามคน (คนที่โอนหลายรายการได้เหรียญแค่ที่รายการแรก) */
+  const MEDALS = [
+    { icon: '🥇', line: 'โอนไวที่สุดในวง' },
+    { icon: '🥈', line: 'โอนไวอันดับ 2 ตู้ ATM เคลื่อนที่' },
+    { icon: '🥉', line: 'โอนไวอันดับ 3 กำลังคนคุณภาพ' }
+  ];
+  const ranked = new Set();
+  let praise = 0;
+  const paid = r.payments.slice().sort((a, b) => (a.at || 0) - (b.at || 0)).map(pm => {
+    if (!ranked.has(pm.from) && ranked.size < MEDALS.length) {
+      const m = MEDALS[ranked.size];
+      ranked.add(pm.from);
+      return { pm, icon: m.icon, line: m.line };
+    }
+    ranked.add(pm.from);
+    return { pm, icon: '✅', line: paidLines[praise++ % paidLines.length] };
+  });
   const debtors = [...new Set(r.transfers.map(t => t.from))];
   const payers = new Set(r.payments.map(p => p.from));
   const done = r.payments.length, left = r.transfers.length;
