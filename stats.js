@@ -470,7 +470,7 @@ export function statsMessage(s, link) {
   ], { backgroundColor: C.soft, cornerRadius: 'md', paddingAll: '10px', flex: 1 });
   pages.push(page => ({
     type: 'bubble', size: 'mega',
-    header: fxHeader(C.ink, eyebrow, `📊 สรุปวง${s.words.suffix}`, page),
+    header: fxHeader(C.ink, eyebrow, `📊 สรุปสถิติวง${s.words.suffix}`, page),
     body: bx('vertical', [
       tx(`ยอดรวม${s.words.total}`, { size: 'xs', color: C.muted }),
       tx(`${baht(s.total)} บาท`, { size: 'xxl', weight: 'bold', color: C.ink }),
@@ -529,7 +529,7 @@ export function statsMessage(s, link) {
   const bubbles = pages.map((f, i) => f(n > 1 ? `${i + 1}/${n}` : ''));
   return {
     type: 'flex',
-    altText: `สรุปวง ${s.crewName} ${s.period.label} · ${baht(s.total)} บาท${s.teaser ? ' · ' + s.teaser : ''}`.slice(0, 380),
+    altText: `สรุปสถิติวง ${s.crewName} ${s.period.label} · ${baht(s.total)} บาท${s.teaser ? ' · ' + s.teaser : ''}`.slice(0, 380),
     contents: n > 1 ? { type: 'carousel', contents: bubbles } : bubbles[0]
   };
 }
@@ -537,7 +537,7 @@ export function statsMessage(s, link) {
 /* ข้อความล้วน ใช้ตอนส่งการ์ดไม่ได้ */
 export function statsText(s, link) {
   const out = [];
-  out.push(`📊 สรุปวง ${s.crewName} · ${s.period.label}`);
+  out.push(`📊 สรุปสถิติวง ${s.crewName} · ${s.period.label}`);
   out.push(`ยอดรวม${s.words.total} ${baht(s.total)} บาท · ตั้งวง ${s.count} ครั้ง · เฉลี่ยวงละ ${baht(s.perBill)} · หัวละ ${baht(s.perHead)}`);
   if (s.delta) out.push(s.delta);
   s.facts.forEach(f => out.push(f));
