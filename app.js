@@ -6,6 +6,10 @@ import {
   ppKind, ppPayload, ppPretty
 } from './calc.js';
 import { DELETE, createFirestoreStore, createLocalStore, firebaseConfigured } from './store.js';
+import {
+  BEER_PRICE_DEFAULT, billSummary, computeStats, periodsOf, statsMessage, statsText,
+  mapPeopleToMembers, mergeSuggestions, pairKey, canonOf, stableStr, toMillis, normName
+} from './stats.js';
 
 /* ---------- เครื่องมือเล็กๆ ---------- */
 const $ = id => document.getElementById(id);
@@ -22,8 +26,14 @@ const newKey = prefix => prefix + randomId(9);
 const catColor = id => `var(--c-${CAT[id] ? id : 'other'})`;
 const LIFF_OK = typeof LIFF_ID === 'string' && /^\d+-[A-Za-z0-9]+$/.test(LIFF_ID.trim());
 const RECENT_KEY = 'kidkalao.recent';
+const RECENT_CREWS_KEY = 'kidkalao.crews';
+const bahtStr = s => new Intl.NumberFormat('en-US').format(Math.round((Number(s) || 0) / 100));
 
-const app = { store: null, liff: false, me: null, billId: null, bill: null, calc: null, unsub: null, first: true };
+const app = {
+  store: null, liff: false, me: null, billId: null, bill: null, calc: null, unsub: null, first: true,
+  billCrewId: null, billCrew: null, billCrewUnsub: null, dirtyAt: 0,
+  crewId: null, crew: null, crewUnsub: null, crewFirst: true, crewPeriod: null, stats: null
+};
 const L = () => window.liff;
 const people = () => (app.calc ? app.calc.people : []);
 const nameOf = id => nameIn(people(), id);
@@ -56,9 +66,26 @@ function banner(html, kind) {
 /* ---------- บันทึกลงฐานข้อมูล ---------- */
 function write(changes, okMsg, undo) {
   if (!app.billId || !app.store) return Promise.resolve(false);
+  app.dirtyAt = Date.now();
   return app.store.update(app.billId, changes)
     .then(() => { if (okMsg) toast(okMsg, undo); return true; })
     .catch(err => { console.error(err); toast('บันทึกไม่สำเร็จ ตรวจอินเทอร์เน็ตแล้วลองใหม่'); return false; });
+}
+function writeCrew(crewId, changes, okMsg, undo) {
+  if (!crewId || !app.store) return Promise.resolve(false);
+  return app.store.update(crewId, changes, 'crews')
+    .then(() => { if (okMsg) toast(okMsg, undo); return true; })
+    .catch(err => { console.error(err); toast('บันทึกข้อมูลวงไม่สำเร็จ ตรวจอินเทอร์เน็ตแล้วลองใหม่'); return false; });
+}
+/* อ่านข้อมูลครั้งเดียว (ใช้ตอนผูกบิลที่ไม่ได้เปิดอยู่) */
+function fetchOnce(id, col) {
+  return new Promise((resolve, reject) => {
+    let done = false, un = null;
+    un = app.store.subscribe(id, d => {
+      if (done) return; done = true; resolve(d);
+      setTimeout(() => { try { un && un(); } catch (e) {} }, 0);
+    }, e => { if (!done) { done = true; reject(e); } }, col);
+  });
 }
 
 /* ---------- เริ่มต้น ---------- */
@@ -112,30 +139,43 @@ $('meChip').addEventListener('click', e => {
 });
 
 /* ---------- หน้าต่างๆ ---------- */
-function billParam() {
-  const id = new URLSearchParams(location.search).get('bill');
+function idParam(name) {
+  const id = new URLSearchParams(location.search).get(name);
   return id && /^[A-Za-z0-9]{16,40}$/.test(id) ? id : null;
 }
-function route() { const id = billParam(); if (id) openBill(id); else showHome(); }
+function route() {
+  const bill = idParam('bill'), crew = idParam('crew');
+  if (bill) openBill(bill); else if (crew) openCrew(crew); else showHome();
+}
 function go(url) { history.pushState(null, '', url); route(); window.scrollTo(0, 0); }
 window.addEventListener('popstate', route);
 function show(which) {
-  ['loading', 'home', 'notFound', 'billView'].forEach(k => { $(k).hidden = k !== which; });
+  ['loading', 'home', 'notFound', 'billView', 'crewView'].forEach(k => { $(k).hidden = k !== which; });
   $('bar').hidden = which !== 'billView';
 }
+function notFound(title, msg) { $('nfTitle').textContent = title; $('notFoundMsg').textContent = msg; show('notFound'); }
 const homeUrl = () => location.pathname;
 const billUrl = id => location.pathname + '?bill=' + id;
+const crewUrl = id => location.pathname + '?crew=' + id;
 $('homeLink').addEventListener('click', () => go(homeUrl()));
 $('toHome').addEventListener('click', () => go(homeUrl()));
 $('nfHome').addEventListener('click', () => go(homeUrl()));
 
 function closeBill() {
   if (app.unsub) { try { app.unsub(); } catch (e) {} }
+  if (app.billCrewUnsub) { try { app.billCrewUnsub(); } catch (e) {} }
+  clearTimeout(syncTimer);
   app.unsub = null; app.billId = null; app.bill = null; app.calc = null; app.first = true; app.link = null;
+  app.billCrewUnsub = null; app.billCrewId = null; app.billCrew = null; attachOpen = false;
+}
+function closeCrew() {
+  if (app.crewUnsub) { try { app.crewUnsub(); } catch (e) {} }
+  app.crewUnsub = null; app.crewId = null; app.crew = null; app.crewFirst = true; app.crewLink = null; app.stats = null;
+  app.crewPeriod = null; app.periodPicked = false;
 }
 function showHome() {
-  closeBill();
-  renderRecent();
+  closeBill(); closeCrew();
+  renderRecent(); renderRecentCrews(); fillCrewSelect();
   document.title = 'คิดค่าเหล้า';
   show('home');
 }
@@ -148,8 +188,87 @@ function readRecent() {
 function saveRecent(list) { try { localStorage.setItem(RECENT_KEY, JSON.stringify(list.slice(0, 20))); } catch (e) {} }
 function remember() {
   const list = readRecent().filter(r => r.id !== app.billId);
-  list.unshift({ id: app.billId, title: app.bill.title, date: app.bill.date, at: Date.now() });
+  list.unshift({ id: app.billId, title: app.bill.title, date: app.bill.date, crewId: app.bill.crewId || '', at: Date.now() });
   saveRecent(list);
+}
+
+/* ---------- วงที่เคยเปิด (เก็บในเครื่อง) ---------- */
+function readCrews() {
+  try { const r = JSON.parse(localStorage.getItem(RECENT_CREWS_KEY) || '[]'); return Array.isArray(r) ? r : []; }
+  catch (e) { return []; }
+}
+function saveCrews(list) { try { localStorage.setItem(RECENT_CREWS_KEY, JSON.stringify(list.slice(0, 20))); } catch (e) {} }
+function rememberCrew(id, name) {
+  const list = readCrews().filter(r => r.id !== id);
+  list.unshift({ id, name: name || '', at: Date.now() });
+  saveCrews(list);
+}
+const crewLabel = name => (String(name || '').trim() || 'วงไม่มีชื่อ');
+function renderRecentCrews() {
+  const list = readCrews();
+  $('recentCrews').innerHTML = list.map(r => `
+    <li class="recent-row" data-id="${esc(r.id)}">
+      <a href="${esc(crewUrl(r.id))}" class="open-crew">${esc(crewLabel(r.name))}</a>
+      <button type="button" class="link hide-crew">ซ่อน</button>
+      <small>ดูสถิติและบิลของวง</small>
+    </li>`).join('');
+}
+$('recentCrews').addEventListener('click', e => {
+  const li = e.target.closest('.recent-row'); if (!li) return;
+  if (e.target.closest('.open-crew')) { e.preventDefault(); go(crewUrl(li.dataset.id)); }
+  else if (e.target.closest('.hide-crew')) { saveCrews(readCrews().filter(r => r.id !== li.dataset.id)); renderRecentCrews(); fillCrewSelect(); }
+});
+function fillCrewSelect() {
+  const cur = $('nbCrew').value;
+  $('nbCrew').innerHTML = '<option value="">ไม่อยู่ในวง</option>' +
+    readCrews().map(r => `<option value="${esc(r.id)}">${esc(crewLabel(r.name))}</option>`).join('') +
+    '<option value="__new">+ สร้างวงใหม่</option>';
+  if ([...$('nbCrew').options].some(o => o.value === cur)) $('nbCrew').value = cur;
+  syncCrewSelect();
+}
+function syncCrewSelect() {
+  const v = $('nbCrew').value;
+  $('nbCrewNameWrap').hidden = v !== '__new';
+  $('nbCrewHint').hidden = !v;
+}
+$('nbCrew').addEventListener('change', () => { syncCrewSelect(); if ($('nbCrew').value === '__new') $('nbCrewName').focus(); });
+
+/* ---------- สร้างวง ---------- */
+async function createCrew(name) {
+  const id = randomId(20);
+  const members = {};
+  if (app.me) members[newKey('m')] = { name: app.me.name.slice(0, 30), lineId: app.me.id, pic: app.me.pic || '', order: Date.now() };
+  const nm = String(name || '').trim().slice(0, 40);
+  await app.store.create(id, { v: 1, name: nm, members, bills: {}, settings: { beerPrice: BEER_PRICE_DEFAULT } }, 'crews');
+  rememberCrew(id, nm);
+  return id;
+}
+$('newCrew').addEventListener('submit', async e => {
+  e.preventDefault();
+  const name = $('ncName').value.trim();
+  if (!name) { $('ncName').focus(); toast('ตั้งชื่อวงก่อน'); return; }
+  try { const id = await createCrew(name); $('ncName').value = ''; go(crewUrl(id)); toast(`สร้างวง ${name} แล้ว`); }
+  catch (err) { console.error(err); toast('สร้างวงไม่สำเร็จ ตรวจอินเทอร์เน็ตหรือการตั้งค่า Firebase'); }
+});
+/* รายชื่อตั้งต้นของบิลใหม่ในวง: คนที่มาบิลล่าสุดของวง (ถ้ายังไม่มีบิล ใช้สมาชิกทั้งหมด) */
+function crewPeopleForNewBill(crew) {
+  const ms = crew.members || {};
+  const bills = Object.values(crew.bills || {}).sort((a, b) => (b.d || '').localeCompare(a.d || '') || (b.c || 0) - (a.c || 0));
+  const last = bills[0];
+  let mids = last ? Object.keys(last.p || {}) : Object.keys(ms);
+  mids = [...new Set(mids.map(m => canonOf(ms, m)))].filter(m => ms[m] && !ms[m].mergedInto);
+  const ppl = {}, now = Date.now();
+  mids.forEach((mid, i) => {
+    const m = ms[mid];
+    const lastP = last && last.p ? (last.p[mid] || Object.entries(last.p).find(([k]) => canonOf(ms, k) === mid)?.[1]) : null;
+    const person = { name: String(m.name || '').slice(0, 30), drinks: lastP ? !!lastP.d : true, weight: 1, pp: m.pp || '', mid, order: now + i };
+    if (m.lineId) { person.lineId = m.lineId; person.pic = m.pic || ''; }
+    ppl[newKey('p')] = person;
+  });
+  if (app.me && !Object.values(ppl).some(p => p.lineId === app.me.id)) {
+    ppl[newKey('p')] = { name: app.me.name.slice(0, 30), drinks: true, weight: 1, pp: '', lineId: app.me.id, pic: app.me.pic || '', order: now - 1 };
+  }
+  return ppl;
 }
 function renderRecent() {
   const list = readRecent();
@@ -168,21 +287,35 @@ $('recent').addEventListener('click', e => {
 });
 
 /* ---------- สร้างบิล ---------- */
-async function createBill(title, date, peopleMap) {
+async function createBill(title, date, peopleMap, crewId) {
   const id = randomId(20);
   const ppl = peopleMap || {};
   if (!peopleMap && app.me) {
     ppl[newKey('p')] = { name: app.me.name.slice(0, 30), drinks: true, weight: 1, pp: '', lineId: app.me.id, pic: app.me.pic || '', order: Date.now() };
   }
   const data = { v: 1, title: String(title || '').trim().slice(0, 60), date: date || todayISO(), round: 1, people: ppl, items: {}, contribs: {}, payments: {} };
+  if (crewId) data.crewId = crewId;
   await app.store.create(id, data);
+  app.dirtyAt = Date.now();
   go(billUrl(id));
 }
 $('newBill').addEventListener('submit', async e => {
   e.preventDefault();
   const btn = $('nbSubmit');
+  let crewId = $('nbCrew').value;
+  if (crewId === '__new' && !$('nbCrewName').value.trim()) { toast('ตั้งชื่อวงใหม่ก่อน'); $('nbCrewName').focus(); return; }
   btn.disabled = true; btn.textContent = 'กำลังสร้าง…';
-  try { await createBill($('nbTitle').value, $('nbDate').value); $('nbTitle').value = ''; }
+  try {
+    let ppl = null;
+    if (crewId === '__new') crewId = await createCrew($('nbCrewName').value);
+    else if (crewId) {
+      const crew = await fetchOnce(crewId, 'crews');
+      if (crew) ppl = crewPeopleForNewBill(normalizeCrew(crew));
+      else { toast('ไม่พบวงนี้ จึงสร้างบิลแบบไม่อยู่ในวง'); crewId = ''; }
+    }
+    await createBill($('nbTitle').value, $('nbDate').value, ppl, crewId);
+    $('nbTitle').value = ''; $('nbCrewName').value = '';
+  }
   catch (err) { console.error(err); toast('สร้างบิลไม่สำเร็จ ตรวจอินเทอร์เน็ตหรือการตั้งค่า Firebase'); }
   finally { btn.disabled = false; btn.textContent = 'สร้างบิล'; }
 });
@@ -191,9 +324,10 @@ $('newWithPeople').addEventListener('click', async () => {
   people().forEach((p, i) => {
     const copy = { name: p.name || '', drinks: !!p.drinks, weight: 1, pp: p.pp || '', order: Date.now() + i };
     if (p.lineId) { copy.lineId = p.lineId; copy.pic = p.pic || ''; }
+    if (p.mid) copy.mid = p.mid;
     ppl[newKey('p')] = copy;
   });
-  try { await createBill('', todayISO(), ppl); toast('สร้างบิลใหม่แล้ว รายชื่อเดิมอยู่ครบ'); }
+  try { await createBill('', todayISO(), ppl, app.bill.crewId || ''); toast('สร้างบิลใหม่แล้ว รายชื่อเดิมอยู่ครบ'); }
   catch (err) { console.error(err); toast('สร้างบิลไม่สำเร็จ ลองใหม่อีกครั้ง'); }
 });
 
@@ -201,28 +335,30 @@ $('newWithPeople').addEventListener('click', async () => {
 function normalize(d) {
   return {
     title: d.title || '', date: d.date || '', round: Number.isFinite(d.round) ? d.round : 1,
-    people: d.people || {}, items: d.items || {}, contribs: d.contribs || {}, payments: d.payments || {}
+    people: d.people || {}, items: d.items || {}, contribs: d.contribs || {}, payments: d.payments || {},
+    crewId: typeof d.crewId === 'string' ? d.crewId : '', createdAt: toMillis(d.createdAt)
   };
+}
+function normalizeCrew(d) {
+  return { name: d.name || '', members: d.members || {}, bills: d.bills || {}, settings: d.settings || {} };
 }
 function openBill(id) {
   if (app.billId === id && app.unsub) return;
-  closeBill();
+  closeBill(); closeCrew();
   app.billId = id;
   show('loading');
   app.unsub = app.store.subscribe(id, data => {
     if (app.billId !== id) return;
     if (!data) {
-      $('notFoundMsg').textContent = app.store.kind === 'local'
+      notFound('ไม่พบบิลนี้', app.store.kind === 'local'
         ? 'บิลนี้อาจสร้างไว้ในโหมดทดลองบนเครื่องอื่น หรือลิงก์ไม่ครบ'
-        : 'ลิงก์อาจไม่ครบ ลองขอลิงก์ใหม่จากเพื่อนในกลุ่ม';
-      show('notFound');
+        : 'ลิงก์อาจไม่ครบ ลองขอลิงก์ใหม่จากเพื่อนในกลุ่ม');
       return;
     }
     onBill(normalize(data));
   }, err => {
     console.error(err);
-    $('notFoundMsg').textContent = 'เปิดบิลไม่ได้ (' + (err.code || err.message || err) + ')';
-    show('notFound');
+    notFound('ไม่พบบิลนี้', 'เปิดบิลไม่ได้ (' + (err.code || err.message || err) + ')');
   });
 }
 function onBill(bill) {
@@ -232,8 +368,146 @@ function onBill(bill) {
   renderHeader(); renderWho(); renderPeople();
   syncFormPeople(); syncContribPeople();
   renderItems(); renderContribs(); renderSummary();
+  watchBillCrew(bill.crewId); renderCrewRow(); scheduleSync();
   remember();
 }
+
+/* ---------- บิลกับวง ---------- */
+let syncTimer = null, attachOpen = false;
+const lastSent = {};
+function watchBillCrew(crewId) {
+  if ((crewId || null) === app.billCrewId) return;
+  if (app.billCrewUnsub) { try { app.billCrewUnsub(); } catch (e) {} }
+  app.billCrewUnsub = null; app.billCrew = null; app.billCrewId = crewId || null;
+  if (!crewId) return;
+  app.billCrewUnsub = app.store.subscribe(crewId, d => {
+    if (app.billCrewId !== crewId) return;
+    app.billCrew = d ? normalizeCrew(d) : null;
+    if (d) rememberCrew(crewId, d.name);
+    renderCrewRow(); scheduleSync();
+  }, err => console.error(err), 'crews');
+}
+/* คนที่แก้บิลเพิ่งแก้ จะซิงก์ก่อน คนอื่นรอนานกว่าเล็กน้อย เพื่อไม่ให้เขียนซ้ำกัน */
+function scheduleSync() {
+  clearTimeout(syncTimer);
+  const mine = Date.now() - app.dirtyAt < 5000;
+  syncTimer = setTimeout(() => { syncCrew().catch(err => console.error('sync', err)); }, mine ? 800 : 2500 + Math.random() * 2500);
+}
+function memberChanges(newMembers, memberUpdates) {
+  const ch = {};
+  Object.entries(newMembers).forEach(([mid, m]) => { ch['members.' + mid] = m; });
+  Object.entries(memberUpdates).forEach(([mid, u]) => Object.entries(u).forEach(([k, v]) => { ch[`members.${mid}.${k}`] = v; }));
+  return ch;
+}
+async function syncCrew() {
+  const b = app.bill, crew = app.billCrew, billId = app.billId;
+  if (!b || !b.crewId || !crew || app.billCrewId !== b.crewId) return;
+  /* 1) จับคนในบิลเข้ากับสมาชิกวง */
+  const { assign, newMembers, memberUpdates } = mapPeopleToMembers(people(), crew.members, () => newKey('m'));
+  const crewCh = memberChanges(newMembers, memberUpdates);
+  const billCh = {};
+  Object.entries(assign).forEach(([pid, mid]) => { billCh[`people.${pid}.mid`] = mid; });
+  if (Object.keys(crewCh).length) await app.store.update(b.crewId, crewCh, 'crews');
+  if (Object.keys(billCh).length) { app.dirtyAt = Date.now(); await app.store.update(billId, billCh); return; }   // สรุปบิลจะเขียนรอบถัดไป
+  if (people().some(p => !p.mid)) return;
+  /* 2) สรุปบิลลงเอกสารวง ถ้าเปลี่ยน */
+  const sum = billSummary(b, app.calc, b.createdAt);
+  const str = stableStr(sum);
+  const cur = crew.bills && crew.bills[billId];
+  if ((cur && stableStr(cur) === str) || lastSent[billId] === str) return;
+  lastSent[billId] = str;
+  await app.store.update(b.crewId, { ['bills.' + billId]: sum }, 'crews');
+}
+/* แก้ชื่อหรือพร้อมเพย์ในบิล ให้รายชื่อสมาชิกวงตามไปด้วย */
+function crewMemberSync(p, fields) {
+  const crew = app.billCrew;
+  if (!app.bill || !app.bill.crewId || !crew || !p.mid) return;
+  const mid = canonOf(crew.members, p.mid), m = crew.members[mid];
+  if (!m) return;
+  const ch = {};
+  if (fields.name && normName(m.name) === normName(p.name)) ch[`members.${mid}.name`] = fields.name;
+  if ('pp' in fields && (m.pp || '') !== fields.pp) ch[`members.${mid}.pp`] = fields.pp;
+  if (Object.keys(ch).length) app.store.update(app.bill.crewId, ch, 'crews').catch(err => console.error(err));
+}
+async function attachBill(billId, crewId) {
+  const [raw, crewRaw] = await Promise.all([fetchOnce(billId, 'bills'), fetchOnce(crewId, 'crews')]);
+  if (!raw) { toast('ไม่พบบิลนี้'); return false; }
+  if (!crewRaw) { toast('ไม่พบวงนี้'); return false; }
+  const bill = normalize(raw);
+  if (bill.crewId && bill.crewId !== crewId) { toast('บิลนี้อยู่ในวงอื่นแล้ว เปิดบิลแล้วเอาออกจากวงเดิมก่อน'); return false; }
+  const crew = normalizeCrew(crewRaw);
+  const calc = compute(bill);
+  const { assign, newMembers, memberUpdates } = mapPeopleToMembers(calc.people, crew.members, () => newKey('m'));
+  calc.people.forEach(p => { if (assign[p.id]) p.mid = assign[p.id]; });
+  const crewCh = memberChanges(newMembers, memberUpdates);
+  crewCh['bills.' + billId] = billSummary(bill, calc, bill.createdAt);
+  const billCh = { crewId };
+  Object.entries(assign).forEach(([pid, mid]) => { billCh[`people.${pid}.mid`] = mid; });
+  await app.store.update(crewId, crewCh, 'crews');
+  await app.store.update(billId, billCh);
+  rememberCrew(crewId, crew.name);
+  return true;
+}
+async function detachBill(billId, crewId) {
+  await app.store.update(crewId, { ['bills.' + billId]: DELETE }, 'crews');
+  await app.store.update(billId, { crewId: DELETE });
+}
+function renderCrewRow() {
+  const b = app.bill, el = $('crewRow');
+  if (!b) return;
+  if (b.crewId) {
+    const name = app.billCrew ? crewLabel(app.billCrew.name) : 'กำลังโหลด…';
+    el.className = 'crew-row linked';
+    el.innerHTML = `<span class="tag">วง</span><a class="grow" href="${esc(crewUrl(b.crewId))}" id="crewOpen">${esc(name)}</a>
+      <button type="button" class="link" id="crewStatsBtn">ดูสถิติวง</button><button type="button" class="link" id="crewDetach">เอาออกจากวง</button>`;
+    return;
+  }
+  if (attachOpen) {
+    if (el.querySelector('.attach')) return;      // กำลังกรอกอยู่ ไม่วาดทับ
+    const crews = readCrews();
+    el.className = 'crew-row';
+    el.innerHTML = `<div class="attach">
+      <div class="attach-row">
+        <select id="attachSel" class="inp" aria-label="เลือกวง">${crews.map(r => `<option value="${esc(r.id)}">${esc(crewLabel(r.name))}</option>`).join('')}<option value="__new">+ สร้างวงใหม่</option></select>
+      </div>
+      <div class="attach-row" id="attachNameRow"${crews.length ? ' hidden' : ''}><input id="attachName" class="inp" placeholder="ชื่อวงใหม่ เช่น แก๊งศุกร์สุดท้าย" maxlength="40" aria-label="ชื่อวงใหม่"></div>
+      <div class="attach-row"><button type="button" class="btn small primary" id="attachGo">ผูกบิลนี้กับวง</button><button type="button" class="btn small ghost" id="attachCancel">ยกเลิก</button></div>
+    </div>`;
+    if (!crews.length) $('attachSel').value = '__new';
+    return;
+  }
+  el.className = 'crew-row';
+  el.innerHTML = '<span class="grow">บิลนี้ยังไม่อยู่ในวง ผูกกับวงเพื่อนับรวมเป็นสถิติ</span><button type="button" class="btn small" id="crewAttachOpen">ผูกกับวง</button>';
+}
+$('crewRow').addEventListener('change', e => {
+  if (e.target.id === 'attachSel') { $('attachNameRow').hidden = e.target.value !== '__new'; if (e.target.value === '__new') $('attachName').focus(); }
+});
+$('crewRow').addEventListener('click', async e => {
+  const b = app.bill; if (!b) return;
+  const id = e.target.id;
+  if (id === 'crewOpen' || id === 'crewStatsBtn') { e.preventDefault(); go(crewUrl(b.crewId)); }
+  else if (id === 'crewAttachOpen') { attachOpen = true; renderCrewRow(); }
+  else if (id === 'attachCancel') { attachOpen = false; $('crewRow').innerHTML = ''; renderCrewRow(); }
+  else if (id === 'attachGo') {
+    let crewId = $('attachSel').value;
+    if (crewId === '__new') {
+      const name = $('attachName').value.trim();
+      if (!name) { toast('ตั้งชื่อวงใหม่ก่อน'); $('attachName').focus(); return; }
+      e.target.disabled = true;
+      try { crewId = await createCrew(name); } catch (err) { console.error(err); toast('สร้างวงไม่สำเร็จ'); e.target.disabled = false; return; }
+    }
+    e.target.disabled = true;
+    const billId = app.billId;
+    try {
+      if (await attachBill(billId, crewId)) { attachOpen = false; toast('ผูกบิลนี้กับวงแล้ว', () => detachBill(billId, crewId).catch(console.error)); }
+      else e.target.disabled = false;
+    } catch (err) { console.error(err); toast('ผูกกับวงไม่สำเร็จ ลองใหม่อีกครั้ง'); e.target.disabled = false; }
+  } else if (id === 'crewDetach') {
+    const billId = app.billId, crewId = b.crewId;
+    try { await detachBill(billId, crewId); toast('เอาบิลนี้ออกจากวงแล้ว', () => attachBill(billId, crewId).catch(console.error)); }
+    catch (err) { console.error(err); toast('เอาออกจากวงไม่สำเร็จ ลองใหม่อีกครั้ง'); }
+  }
+});
 
 /* ---------- หัวบิล ---------- */
 function renderHeader() {
@@ -303,8 +577,15 @@ const personOf = el => { const li = el.closest('.person'); return li && people()
 $('peopleList').addEventListener('change', e => {
   const p = personOf(e.target); if (!p) return;
   const t = e.target;
-  if (t.classList.contains('p-name')) write({ ['people.' + p.id + '.name']: t.value.trim().slice(0, 30) });
-  else if (t.classList.contains('p-pp')) write({ ['people.' + p.id + '.pp']: t.value.trim().slice(0, 20) });
+  if (t.classList.contains('p-name')) {
+    const v = t.value.trim().slice(0, 30);
+    write({ ['people.' + p.id + '.name']: v });
+    if (v) crewMemberSync(p, { name: v });
+  } else if (t.classList.contains('p-pp')) {
+    const v = t.value.trim().slice(0, 20);
+    write({ ['people.' + p.id + '.pp']: v });
+    crewMemberSync(p, { pp: v });
+  }
   else if (t.classList.contains('p-w')) write({ ['people.' + p.id + '.weight']: Number(t.value) });
 });
 $('peopleList').addEventListener('input', e => {
@@ -1037,11 +1318,14 @@ async function sendToLine(kind) {
   copyText(text, kind === 'invite' ? 'คัดลอกลิงก์แล้ว ไปวางในแชท LINE ได้เลย' : 'คัดลอกสรุปแล้ว ไปวางในแชท LINE ได้เลย');
 }
 function copyText(text, okMsg) {
+  const crewPage = !$('crewView').hidden;
+  const ta = crewPage ? 'statsText' : 'copyText', det = crewPage ? 'statsPreview' : 'preview', box = crewPage ? 'statsShare' : 'summary';
   const fallback = () => {
-    $('copyText').value = text;
-    $('preview').open = true;
-    $('summary').scrollIntoView({ behavior: 'smooth', block: 'end' });
-    $('copyText').focus(); $('copyText').select();
+    $(ta).value = text;
+    $(det).open = true;
+    $(box).hidden = false;
+    $(box).scrollIntoView({ behavior: 'smooth', block: 'end' });
+    $(ta).focus(); $(ta).select();
     toast('คัดลอกอัตโนมัติไม่ได้ เลือกข้อความแล้วกดคัดลอกเอง');
   };
   try { navigator.clipboard.writeText(text).then(() => toast(okMsg), fallback); }
@@ -1051,6 +1335,317 @@ $('inviteBtn').addEventListener('click', () => sendToLine('invite'));
 $('sendSummary').addEventListener('click', () => sendToLine('summary'));
 $('copyBtn').addEventListener('click', () => copyText(buildText(currentLink()), 'คัดลอกสรุปแล้ว ไปวางในแชท LINE ได้เลย'));
 $('copyLinkBtn').addEventListener('click', () => copyText(currentLink(), 'คัดลอกลิงก์บิลแล้ว'));
+
+/* ---------- หน้าวง ---------- */
+function openCrew(id) {
+  if (app.crewId === id && app.crewUnsub) return;
+  closeBill(); closeCrew();
+  app.crewId = id;
+  show('loading');
+  app.crewUnsub = app.store.subscribe(id, data => {
+    if (app.crewId !== id) return;
+    if (!data) {
+      notFound('ไม่พบวงนี้', app.store.kind === 'local' ? 'วงนี้อาจสร้างไว้ในโหมดทดลองบนเครื่องอื่น หรือลิงก์ไม่ครบ' : 'ลิงก์อาจไม่ครบ ลองขอลิงก์ใหม่จากเพื่อนในกลุ่ม');
+      return;
+    }
+    app.crew = normalizeCrew(data);
+    if (app.crewFirst) { app.crewFirst = false; show('crewView'); refreshCrewLink(); }
+    rememberCrew(id, app.crew.name);
+    renderCrew();
+  }, err => {
+    console.error(err);
+    notFound('ไม่พบวงนี้', 'เปิดวงไม่ได้ (' + (err.code || err.message || err) + ')');
+  }, 'crews');
+}
+const crewBillsSorted = crew => Object.entries(crew.bills || {}).map(([id, b]) => Object.assign({ id }, b))
+  .sort((a, b) => (b.d || '').localeCompare(a.d || '') || (b.c || 0) - (a.c || 0));
+function memberBillCount(crew, mid) {
+  return Object.values(crew.bills || {}).filter(b => Object.keys(b.p || {}).some(k => canonOf(crew.members, k) === mid)).length;
+}
+function renderCrew() {
+  const c = app.crew;
+  const live = Object.keys(c.members).filter(m => !c.members[m].mergedInto && memberBillCount(c, m) > 0);
+  const nBills = Object.keys(c.bills).length;
+  if (document.activeElement !== $('crewName')) $('crewName').value = c.name;
+  $('crewMeta').textContent = `${live.length} สมาชิก · ${nBills} บิล`;
+  $('sCrewTitle').textContent = crewLabel(c.name);
+  document.title = crewLabel(c.name) + ' · คิดค่าเหล้า';
+  if (document.activeElement !== $('beerPrice')) $('beerPrice').value = String(Number(c.settings.beerPrice) > 0 ? c.settings.beerPrice : BEER_PRICE_DEFAULT);
+  renderCrewBills(); renderOldBills(); renderCrewMembers(); renderStats();
+}
+$('crewName').addEventListener('change', e => {
+  const v = e.target.value.trim().slice(0, 40);
+  writeCrew(app.crewId, { name: v }, 'เปลี่ยนชื่อวงแล้ว');
+  rememberCrew(app.crewId, v);
+});
+$('crewName').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); e.target.blur(); } });
+$('beerPrice').addEventListener('change', e => {
+  const n = Math.round(parseMoney(e.target.value));
+  if (!(n >= 1 && n <= 9999)) { toast('ใส่ราคาเป็นตัวเลข 1–9999 บาท'); e.target.value = String(app.crew.settings.beerPrice || BEER_PRICE_DEFAULT); return; }
+  writeCrew(app.crewId, { 'settings.beerPrice': n }, `ใช้ราคาเบียร์ขวดละ ${n} บาทแล้ว`);
+});
+
+/* บิลในวง */
+function renderCrewBills() {
+  const list = crewBillsSorted(app.crew);
+  $('crewBillCount').textContent = list.length ? `${list.length} บิล` : '';
+  $('crewBillsEmpty').hidden = list.length > 0;
+  $('crewBills').innerHTML = list.map(b => {
+    const n = new Set(Object.keys(b.p || {}).map(m => canonOf(app.crew.members, m))).size;
+    const owe = Object.values(b.p || {}).reduce((a, x) => a + (x.ow || 0), 0);
+    const status = b.st ? '<span class="status done">เคลียร์แล้ว</span>' : `<span class="status wait">ค้างโอน ${bahtStr(owe)}</span>`;
+    return `<li class="item" data-id="${esc(b.id)}">
+      <span class="dot" style="--c:var(--accent)"></span>
+      <div>
+        <div class="it-name"><a href="${esc(billUrl(b.id))}" class="cb-open">${esc((b.t || '').trim() || 'บิลไม่มีชื่อ')}</a></div>
+        <div class="it-meta">${esc(thDate(b.d))} · ${n} คน · ${status}</div>
+      </div>
+      <div class="it-side">
+        <span class="it-amt">${bahtStr(b.tot)}</span>
+        <span class="it-act"><button type="button" class="link cb-open">เปิด</button><button type="button" class="link cb-remove">เอาออก</button></span>
+      </div>
+    </li>`;
+  }).join('');
+}
+$('crewBills').addEventListener('click', async e => {
+  const li = e.target.closest('.item'); if (!li) return;
+  const billId = li.dataset.id, crewId = app.crewId;
+  if (e.target.closest('.cb-open')) { e.preventDefault(); go(billUrl(billId)); }
+  else if (e.target.closest('.cb-remove')) {
+    try { await detachBill(billId, crewId); toast('เอาบิลออกจากวงแล้ว', () => attachBill(billId, crewId).catch(console.error)); }
+    catch (err) { console.error(err); toast('เอาออกไม่สำเร็จ ลองใหม่อีกครั้ง'); }
+  }
+});
+function renderOldBills() {
+  const inCrew = app.crew.bills || {};
+  const list = readRecent().filter(r => !inCrew[r.id] && !r.crewId);
+  $('oldBillsEmpty').hidden = list.length > 0;
+  $('oldBills').innerHTML = list.map(r => `
+    <li class="item" data-id="${esc(r.id)}">
+      <span class="dot" style="--c:var(--line)"></span>
+      <div><div class="it-name">${esc((r.title || '').trim() || 'บิลไม่มีชื่อ')}</div><div class="it-meta">${esc(thDate(r.date) || '')}</div></div>
+      <div class="it-side"><button type="button" class="btn small ob-add">เพิ่มเข้าวง</button></div>
+    </li>`).join('');
+}
+$('oldBills').addEventListener('click', async e => {
+  const btn = e.target.closest('.ob-add'); if (!btn) return;
+  const billId = btn.closest('.item').dataset.id, crewId = app.crewId;
+  btn.disabled = true; btn.textContent = 'กำลังเพิ่ม…';
+  try {
+    if (await attachBill(billId, crewId)) {
+      saveRecent(readRecent().map(r => r.id === billId ? Object.assign({}, r, { crewId }) : r));
+      toast('เพิ่มบิลเข้าวงแล้ว', () => detachBill(billId, crewId).then(() => saveRecent(readRecent().map(r => r.id === billId ? Object.assign({}, r, { crewId: '' }) : r))).catch(console.error));
+    } else { btn.disabled = false; btn.textContent = 'เพิ่มเข้าวง'; }
+  } catch (err) { console.error(err); toast('เพิ่มไม่สำเร็จ ลองใหม่อีกครั้ง'); btn.disabled = false; btn.textContent = 'เพิ่มเข้าวง'; }
+});
+
+/* สมาชิก: เปลี่ยนชื่อ รวมคน แยกคน */
+let membersDirty = false;
+function renderSuggestions() {
+  const box = $('memberSuggest');
+  const list = mergeSuggestions(app.crew);
+  box.hidden = !list.length;
+  if (!list.length) { box.innerHTML = ''; return; }
+  box.innerHTML = `<h3>อาจเป็นคนเดียวกัน</h3>
+    <ul>${list.map(x => `<li data-from="${esc(x.from)}" data-to="${esc(x.to)}">
+      <span><b>${esc(x.fromName)}</b> กับ <b>${esc(x.toName)}</b></span>
+      <span class="sg-act"><button type="button" class="btn small sg-merge">รวมเป็น ${esc(x.toName)}</button><button type="button" class="link sg-no">คนละคน</button></span>
+    </li>`).join('')}</ul>
+    ${list.length > 1 ? `<button type="button" class="btn small primary sg-all">รวมทั้งหมด ${list.length} ชื่อ</button>` : ''}`;
+}
+$('memberSuggest').addEventListener('click', e => {
+  const crewId = app.crewId;
+  if (e.target.closest('.sg-all')) {
+    const list = mergeSuggestions(app.crew);
+    const ch = {}, undo = {};
+    list.forEach(x => { ch[`members.${x.from}.mergedInto`] = x.to; undo[`members.${x.from}.mergedInto`] = DELETE; });
+    writeCrew(crewId, ch, `รวม ${list.length} ชื่อแล้ว`, () => writeCrew(crewId, undo, 'แยกออกแล้ว'));
+    return;
+  }
+  const li = e.target.closest('li'); if (!li) return;
+  const { from, to } = li.dataset;
+  const ms = app.crew.members;
+  if (e.target.closest('.sg-merge')) {
+    writeCrew(crewId, { [`members.${from}.mergedInto`]: to }, `รวม ${ms[from].name} เข้ากับ ${ms[to].name} แล้ว`,
+      () => writeCrew(crewId, { [`members.${from}.mergedInto`]: DELETE }, 'แยกออกแล้ว'));
+  } else if (e.target.closest('.sg-no')) {
+    const k = `settings.notSame.${pairKey(from, to)}`;
+    writeCrew(crewId, { [k]: true }, `โอเค ${ms[from].name} กับ ${ms[to].name} เป็นคนละคน จะไม่ถามอีก`, () => writeCrew(crewId, { [k]: DELETE }));
+  }
+});
+function renderCrewMembers() {
+  renderSuggestions();
+  const list = $('memberList');
+  const a = document.activeElement;
+  if (a && list.contains(a) && (a.tagName === 'INPUT' || a.tagName === 'SELECT')) { membersDirty = true; return; }
+  membersDirty = false;
+  const c = app.crew, ms = c.members;
+  const ids = Object.keys(ms);
+  const live = ids.filter(m => !ms[m].mergedInto).map(m => ({ id: m, n: memberBillCount(c, m) }))
+    .sort((x, y) => y.n - x.n || (ms[x.id].order || 0) - (ms[y.id].order || 0));
+  const nm = id => (ms[id] && String(ms[id].name || '').trim()) || 'ไม่มีชื่อ';
+  $('memberCount').textContent = live.filter(x => x.n > 0).length ? `${live.filter(x => x.n > 0).length} คน` : '';
+  list.innerHTML = live.map(({ id, n }) => {
+    const merged = ids.filter(o => ms[o].mergedInto && canonOf(ms, o) === id);
+    const opts = live.filter(o => o.id !== id).map(o => `<option value="${esc(o.id)}">${esc(nm(o.id))}</option>`).join('');
+    return `<li class="member" data-id="${esc(id)}">
+      ${avatarHTML(ms[id].pic, ms[id].name)}
+      <input class="inp soft m-name" value="${esc(ms[id].name || '')}" aria-label="ชื่อสมาชิก" maxlength="30">
+      ${n === 0 ? '<button type="button" class="link m-del">ลบ</button>' : '<span></span>'}
+      <div class="m-meta">
+        <span>${n ? `อยู่ใน ${n} บิล` : 'ยังไม่อยู่ในบิลไหน'}${ms[id].lineId ? ' · ผูกบัญชี LINE แล้ว' : ''}</span>
+        ${opts ? `<select class="inp m-merge" aria-label="รวม ${esc(nm(id))} กับสมาชิกคนอื่น"><option value="">รวมกับ…</option>${opts}</select>` : ''}
+        ${merged.map(o => `<span>รวม "${esc(nm(o))}" ไว้แล้ว <button type="button" class="link m-split" data-mid="${esc(o)}">แยกออก</button></span>`).join('')}
+      </div>
+    </li>`;
+  }).join('');
+}
+$('memberList').addEventListener('focusout', () => setTimeout(() => {
+  if (membersDirty && !$('memberList').contains(document.activeElement)) renderCrewMembers();
+}, 0));
+$('memberList').addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.tagName === 'INPUT') { e.preventDefault(); e.target.blur(); } });
+$('memberList').addEventListener('change', e => {
+  const li = e.target.closest('.member'); if (!li) return;
+  const mid = li.dataset.id, ms = app.crew.members, crewId = app.crewId;
+  if (e.target.classList.contains('m-name')) {
+    const v = e.target.value.trim().slice(0, 30);
+    if (v) writeCrew(crewId, { [`members.${mid}.name`]: v });
+  } else if (e.target.classList.contains('m-merge') && e.target.value) {
+    const target = e.target.value;
+    const a = (ms[mid].name || '').trim() || 'ไม่มีชื่อ', b = (ms[target].name || '').trim() || 'ไม่มีชื่อ';
+    e.target.blur();
+    writeCrew(crewId, { [`members.${mid}.mergedInto`]: target }, `รวม ${a} เข้ากับ ${b} แล้ว`, () => writeCrew(crewId, { [`members.${mid}.mergedInto`]: DELETE }, 'แยกออกแล้ว'));
+  }
+});
+$('memberList').addEventListener('click', e => {
+  const li = e.target.closest('.member'); if (!li) return;
+  const crewId = app.crewId;
+  const split = e.target.closest('.m-split');
+  if (split) { writeCrew(crewId, { [`members.${split.dataset.mid}.mergedInto`]: DELETE }, 'แยกออกแล้ว'); return; }
+  if (e.target.closest('.m-del')) {
+    const mid = li.dataset.id, data = app.crew.members[mid];
+    writeCrew(crewId, { [`members.${mid}`]: DELETE }, `ลบ ${(data.name || '').trim() || 'สมาชิก'} แล้ว`, () => writeCrew(crewId, { [`members.${mid}`]: data }, 'คืนสมาชิกแล้ว'));
+  }
+});
+
+/* สถิติ */
+function awardListHTML(cls, list) {
+  if (!list.length) return '';
+  return `<ul class="awards ${cls}">${list.map(a => `
+    <li class="award"><span class="a-icon" aria-hidden="true">${esc(a.icon)}</span>
+      <div><div class="a-label">${esc(a.label)}</div><div class="a-name">${esc(a.name)}</div>${a.detail ? `<div class="a-detail">${esc(a.detail)}</div>` : ''}</div>
+      <span class="a-value">${esc(a.value || '')}</span></li>`).join('')}</ul>`;
+}
+function renderStats() {
+  const crew = app.crew;
+  const periods = periodsOf(crew);
+  if (!app.periodPicked || !periods.some(p => p.key === app.crewPeriod)) app.crewPeriod = periods[0].key;
+  $('periodSel').innerHTML = periods.map(p => `<option value="${esc(p.key)}"${p.key === app.crewPeriod ? ' selected' : ''}>${esc(p.label)}</option>`).join('');
+  const s = computeStats(crew, app.crewPeriod);
+  app.stats = s;
+  $('sEyebrow').textContent = `สถิติวง${s.words.suffix}`;
+  if (!s.count) {
+    $('statsBody').innerHTML = '<p class="empty-note" style="margin-top:12px">ยังไม่มีบิลในช่วงนี้ สร้างบิลในวง หรือเพิ่มบิลเก่าเข้าวง แล้วสถิติจะขึ้นตรงนี้</p>';
+    $('statsShare').hidden = true;
+    return;
+  }
+  $('statsShare').hidden = false;
+  const MEDAL = ['🥇', '🥈', '🥉'];
+  const cats = s.cats;
+  $('statsBody').innerHTML = `
+    <div class="s-label">ยอดรวม${esc(s.words.total)}</div>
+    <div class="s-total">${bahtStr(s.total)}<small>บาท</small></div>
+    ${s.delta ? `<div class="s-delta">${esc(s.delta)}</div>` : ''}
+    <div class="tiles">
+      <div class="tile"><b>${s.count}</b><span>ตั้งวง</span></div>
+      <div class="tile"><b>${bahtStr(s.perBill)}</b><span>เฉลี่ย/วง</span></div>
+      <div class="tile"><b>${bahtStr(s.perHead)}</b><span>เฉลี่ย/หัว</span></div>
+    </div>
+    ${cats.length ? `<div class="catbar" aria-hidden="true">${cats.map(c => `<span style="--c:${catColor(c.id)};flex:${c.amt} 1 0"></span>`).join('')}</div>
+    <ul class="legend">${cats.map(c => `<li><span class="dot" style="--c:${catColor(c.id)}"></span><span class="lbl">${esc(c.label)}</span><span class="num">${bahtStr(c.amt)}</span></li>`).join('')}</ul>` : ''}
+    ${s.facts.length || s.moreFacts.length ? `<ul class="facts">${s.facts.map(f => `<li>${esc(f)}</li>`).join('')}${s.moreFacts.map(f => `<li class="more">${esc(f)}</li>`).join('')}</ul>` : ''}
+    <hr class="dash">
+    <section class="s-sec"><h3>🏆 ทำเนียบบิล</h3>
+      <ul class="podium">${s.topBills.map((b, i) => `<li><span class="medal" aria-hidden="true">${MEDAL[i]}</span><div>${esc(b.title)}<small>${esc(b.sub)}</small></div><b>${esc(b.total)}</b></li>`).join('')}</ul>
+      ${awardListHTML('bills', s.billAwards)}
+    </section>
+    ${s.praise.length ? `<hr class="dash"><section class="s-sec"><h3>🎖️ ทำเนียบคนเด่น</h3>${awardListHTML('praise', s.praise)}</section>` : ''}
+    ${s.tease.length ? `<hr class="dash"><section class="s-sec"><h3>🙈 รางวัลแซว${esc(s.words.suffix)}</h3>${awardListHTML('tease', s.tease)}</section>` : ''}
+    <hr class="dash">
+    <section class="s-sec"><h3>สถิติรายคน</h3>
+      <div class="s-table-wrap"><table class="s-table">
+        <thead><tr><th>ชื่อ</th><th>มา</th><th>จ่ายรวม</th><th>สำรองจ่าย</th><th>🥇</th><th>ค้าง</th></tr></thead>
+        <tbody>${s.table.map(r => `<tr><td>${esc(r.name)}</td><td>${r.attend}</td><td>${bahtStr(r.share)}</td><td>${bahtStr(r.fronted)}</td><td>${r.gold || '–'}</td><td class="${r.owe ? 'owe' : ''}">${r.owe ? bahtStr(r.owe) : '–'}</td></tr>`).join('')}</tbody>
+      </table></div>
+      <p class="hint" style="margin-top:8px">ยอด "ค้าง" นับจากทุกบิลในวง ไม่ขึ้นกับช่วงเวลาที่เลือก</p>
+    </section>`;
+  $('statsText').value = statsText(s, currentCrewLink());
+}
+$('periodSel').addEventListener('change', e => { app.crewPeriod = e.target.value; app.periodPicked = true; renderStats(); });
+
+/* ลิงก์วง */
+function crewFallbackLink() {
+  return app.liff ? `https://liff.line.me/${LIFF_ID.trim()}?crew=${app.crewId}` : location.origin + location.pathname + '?crew=' + app.crewId;
+}
+function refreshCrewLink() {
+  const id = app.crewId;
+  app.crewLink = crewFallbackLink();
+  if (!app.liff || !L().permanentLink || !L().permanentLink.createUrlBy) return;
+  L().permanentLink.createUrlBy(location.origin + location.pathname + '?crew=' + id)
+    .then(l => { if (app.crewId === id && l) { app.crewLink = l; if (app.stats) $('statsText').value = statsText(app.stats, l); } })
+    .catch(e => console.warn('createUrlBy', e));
+}
+const currentCrewLink = () => app.crewLink || crewFallbackLink();
+
+function crewInviteMessage(link) {
+  const name = crewLabel(app.crew.name);
+  return {
+    type: 'flex', altText: `มาเข้าวง ${name} ใน คิดค่าเหล้า`.slice(0, 380),
+    contents: {
+      type: 'bubble',
+      body: { type: 'box', layout: 'vertical', spacing: 'sm', contents: [
+        { type: 'text', text: 'คิดค่าเหล้า · วง', size: 'xs', color: '#8A5100', weight: 'bold' },
+        { type: 'text', text: name, size: 'lg', weight: 'bold', color: '#13222A', wrap: true },
+        { type: 'text', text: 'บิลในวงนี้ถูกนับรวมเป็นสถิติ ใครขาประจำ ใครจอมดอง ดูได้ที่นี่', size: 'sm', color: '#566870', wrap: true, margin: 'md' }
+      ] },
+      footer: { type: 'box', layout: 'vertical', contents: [
+        { type: 'button', style: 'primary', color: '#A85F00', height: 'sm', action: { type: 'uri', label: 'เปิดวง', uri: link } }
+      ] }
+    }
+  };
+}
+async function shareOrCopy(message, text, okMsg) {
+  if (app.liff && !L().isLoggedIn()) { L().login({ redirectUri: location.href }); return; }
+  if (app.liff && L().isApiAvailable && L().isApiAvailable('shareTargetPicker')) {
+    try {
+      const res = await L().shareTargetPicker([message], { isMultiple: true });
+      if (res) toast(okMsg);
+      return;
+    } catch (e) {
+      console.error(e);
+      toast('ส่งเข้า LINE ไม่สำเร็จ จึงคัดลอกข้อความให้แทน');
+    }
+  }
+  copyText(text, 'คัดลอกแล้ว ไปวางในแชท LINE ได้เลย');
+}
+$('sendStats').addEventListener('click', () => {
+  const s = app.stats; if (!s || !s.count) return;
+  const link = currentCrewLink();
+  shareOrCopy(statsMessage(s, link), statsText(s, link), 'ส่งสถิติเข้า LINE แล้ว');
+});
+$('copyStats').addEventListener('click', () => { if (app.stats) copyText(statsText(app.stats, currentCrewLink()), 'คัดลอกสถิติแล้ว ไปวางในแชท LINE ได้เลย'); });
+$('crewInvite').addEventListener('click', () => {
+  const link = currentCrewLink();
+  shareOrCopy(crewInviteMessage(link), `มาเข้าวง "${crewLabel(app.crew.name)}" ดูสถิติวงได้ที่นี่\n${link}`, 'ส่งคำชวนเข้า LINE แล้ว');
+});
+$('crewCopyLink').addEventListener('click', () => copyText(currentCrewLink(), 'คัดลอกลิงก์วงแล้ว'));
+$('crewNewBill').addEventListener('click', async e => {
+  const btn = e.currentTarget;
+  btn.disabled = true;
+  try { await createBill('', todayISO(), crewPeopleForNewBill(app.crew), app.crewId); toast('สร้างบิลใหม่ในวงแล้ว'); }
+  catch (err) { console.error(err); toast('สร้างบิลไม่สำเร็จ ลองใหม่อีกครั้ง'); }
+  finally { btn.disabled = false; }
+});
 
 /* ---------- QR พร้อมเพย์ ---------- */
 let qrDigits = '', lastFocus = null;
@@ -1088,4 +1683,4 @@ boot().catch(err => {
 });
 
 // ให้ทดสอบได้จากภายนอก
-window.__kidkalao = { app, flexMessage, buildText };
+window.__kidkalao = { app, flexMessage, buildText, statsMessage, syncCrew };

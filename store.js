@@ -1,11 +1,14 @@
-// ที่เก็บข้อมูลบิล มี 2 แบบ
-// 1) Firebase Firestore — ทุกคนที่มีลิงก์เห็นบิลเดียวกันแบบสด
+// ที่เก็บข้อมูล มี 2 แบบ
+// 1) Firebase Firestore — ทุกคนที่มีลิงก์เห็นข้อมูลเดียวกันแบบสด
 // 2) โหมดทดลอง — เก็บในเบราว์เซอร์เครื่องนี้ ใช้ตอนยังไม่ได้ใส่ค่า Firebase
-// ทั้งสองแบบมีคำสั่งเหมือนกัน: create(id, data), subscribe(id, onData, onError), update(id, changes)
+// ทั้งสองแบบมีคำสั่งเหมือนกัน: create(id, data, col), subscribe(id, onData, onError, col), update(id, changes, col)
+// col คือชื่อคอลเลกชัน 'bills' (บิล, ค่าเริ่มต้น) หรือ 'crews' (วง)
 // changes คือ { 'items.abc123': {...}, 'title': 'ชื่อใหม่' } ใส่ DELETE เพื่อลบช่องนั้น
 
 export const DELETE = Symbol('delete');
 export const FIREBASE_VERSION = '12.19.0';
+const COLS = ['bills', 'crews'];
+const checkCol = col => { if (!COLS.includes(col)) throw new Error('unknown collection ' + col); return col; };
 
 export function firebaseConfigured(cfg) {
   return !!(cfg && typeof cfg.apiKey === 'string' && cfg.apiKey.length > 20 && !/ใส่/.test(cfg.apiKey) && cfg.projectId && !/ใส่/.test(cfg.projectId));
@@ -19,7 +22,7 @@ export async function createFirestoreStore(cfg, loader = defaultLoader) {
   const auth = authMod.getAuth(app);
   await authMod.signInAnonymously(auth);
   const db = fs.getFirestore(app);
-  const ref = id => fs.doc(db, 'bills', id);
+  const ref = (id, col) => fs.doc(db, checkCol(col), id);
   const convert = changes => {
     const out = {};
     for (const [k, v] of Object.entries(changes)) out[k] = v === DELETE ? fs.deleteField() : v;
@@ -28,14 +31,14 @@ export async function createFirestoreStore(cfg, loader = defaultLoader) {
   };
   return {
     kind: 'firebase',
-    create(id, data) {
-      return fs.setDoc(ref(id), Object.assign({}, data, { createdAt: fs.serverTimestamp(), updatedAt: fs.serverTimestamp() }));
+    create(id, data, col = 'bills') {
+      return fs.setDoc(ref(id, col), Object.assign({}, data, { createdAt: fs.serverTimestamp(), updatedAt: fs.serverTimestamp() }));
     },
-    subscribe(id, onData, onError) {
-      return fs.onSnapshot(ref(id), snap => onData(snap.exists() ? snap.data() : null), onError);
+    subscribe(id, onData, onError, col = 'bills') {
+      return fs.onSnapshot(ref(id, col), snap => onData(snap.exists() ? snap.data({ serverTimestamps: 'estimate' }) : null), onError);
     },
-    update(id, changes) {
-      return fs.updateDoc(ref(id), convert(changes));
+    update(id, changes, col = 'bills') {
+      return fs.updateDoc(ref(id, col), convert(changes));
     }
   };
 }
@@ -56,35 +59,38 @@ function setPath(obj, path, value) {
 
 export function createLocalStore() {
   const PREFIX = 'kidkalao.demo.';
+  const key = (id, col) => (checkCol(col) === 'bills' ? PREFIX + id : PREFIX + col + '.' + id);
   const mem = {};
   const subs = new Map();
-  const read = id => {
-    try { const s = localStorage.getItem(PREFIX + id); if (s) return JSON.parse(s); } catch (e) { /* ใช้ค่าในหน่วยความจำแทน */ }
-    return mem[id] ? clone(mem[id]) : null;
+  const read = k => {
+    try { const s = localStorage.getItem(k); if (s) return JSON.parse(s); } catch (e) { /* ใช้ค่าในหน่วยความจำแทน */ }
+    return mem[k] ? clone(mem[k]) : null;
   };
-  const write = (id, data) => {
-    mem[id] = clone(data);
-    try { localStorage.setItem(PREFIX + id, JSON.stringify(data)); } catch (e) { /* เก็บไม่ได้ ใช้หน่วยความจำ */ }
+  const write = (k, data) => {
+    mem[k] = clone(data);
+    try { localStorage.setItem(k, JSON.stringify(data)); } catch (e) { /* เก็บไม่ได้ ใช้หน่วยความจำ */ }
   };
-  const emit = id => (subs.get(id) || []).forEach(fn => fn(read(id)));
+  const emit = k => (subs.get(k) || []).forEach(fn => fn(read(k)));
   try {
-    window.addEventListener('storage', e => { if (e.key && e.key.startsWith(PREFIX)) emit(e.key.slice(PREFIX.length)); });
+    window.addEventListener('storage', e => { if (e.key && e.key.startsWith(PREFIX)) emit(e.key); });
   } catch (e) {}
   return {
     kind: 'local',
-    async create(id, data) { write(id, Object.assign({}, data, { createdAt: Date.now(), updatedAt: Date.now() })); },
-    subscribe(id, onData) {
-      const list = subs.get(id) || [];
-      list.push(onData); subs.set(id, list);
-      Promise.resolve().then(() => onData(read(id)));
-      return () => subs.set(id, (subs.get(id) || []).filter(f => f !== onData));
+    async create(id, data, col = 'bills') { write(key(id, col), Object.assign({}, data, { createdAt: Date.now(), updatedAt: Date.now() })); },
+    subscribe(id, onData, onError, col = 'bills') {
+      const k = key(id, col);
+      const list = subs.get(k) || [];
+      list.push(onData); subs.set(k, list);
+      Promise.resolve().then(() => onData(read(k)));
+      return () => subs.set(k, (subs.get(k) || []).filter(f => f !== onData));
     },
-    async update(id, changes) {
-      const d = read(id);
-      if (!d) throw new Error('ไม่พบบิลนี้');
-      for (const [k, v] of Object.entries(changes)) setPath(d, k, v);
+    async update(id, changes, col = 'bills') {
+      const k = key(id, col);
+      const d = read(k);
+      if (!d) throw new Error('ไม่พบข้อมูลนี้');
+      for (const [p, v] of Object.entries(changes)) setPath(d, p, v);
       d.updatedAt = Date.now();
-      write(id, d); emit(id);
+      write(k, d); emit(k);
     }
   };
 }

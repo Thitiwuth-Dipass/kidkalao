@@ -276,6 +276,70 @@ fieldset.field{border:0;margin:0;padding:0;min-width:0;gap:8px}
 .qr-id{display:flex;justify-content:center;align-items:center;gap:10px;flex-wrap:wrap;font-family:var(--font-num)}
 .sheet .hint{text-align:center}
 
+/* ---------- วงและสถิติ ---------- */
+.tag{display:inline-block;font-size:12px;font-weight:600;letter-spacing:.04em;padding:2px 8px;border-radius:99px;background:var(--accent-soft);color:var(--accent-ink)}
+.crew-row{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;font-size:14px;color:var(--muted);padding:10px 12px;border:1px dashed var(--line);border-radius:12px}
+.crew-row.linked{border-style:solid;background:var(--surface)}
+.crew-row a{color:var(--ink);font-weight:600;text-decoration:none}
+.crew-row .grow{flex:1 1 auto;min-width:0}
+.attach{display:grid;gap:8px;width:100%}
+.attach-row{display:flex;gap:8px;flex-wrap:wrap}
+.attach-row .inp{flex:1 1 160px}
+.home .crews .recent-row .tag{grid-column:2;grid-row:1}
+.item .it-name a{color:inherit;text-decoration:none}
+.status{display:inline-block;font-size:12px;padding:1px 8px;border-radius:99px;white-space:nowrap}
+.status.done{background:var(--good-soft);color:var(--good)}
+.status.wait{background:var(--bad-soft);color:var(--bad)}
+.member{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:6px 8px;align-items:center;padding:10px}
+.member + .member{border-top:1px solid var(--line)}
+.member .m-meta{grid-column:2/-1;font-size:12px;color:var(--muted);display:flex;flex-wrap:wrap;gap:4px 10px;align-items:center}
+.member select{width:auto;min-height:32px;padding:2px 8px;font-size:13px}
+.member.merged{opacity:.7}
+.stats-ctl{display:grid;gap:4px;margin:10px 0 4px}
+.s-label{font-size:13px;color:var(--muted);margin-top:14px}
+.s-total{font-family:var(--font-num);font-size:38px;font-weight:600;line-height:1.1;font-variant-numeric:tabular-nums}
+.s-total small{font-family:var(--font-body);font-size:16px;font-weight:500;color:var(--muted);margin-left:6px}
+.s-delta{font-size:13px;color:var(--accent-ink);font-weight:600;margin-top:2px}
+.tiles{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin-top:14px}
+.tile{background:var(--surface-2);border-radius:10px;padding:10px 6px;text-align:center}
+.tile b{display:block;font-family:var(--font-num);font-size:20px;font-weight:600;font-variant-numeric:tabular-nums}
+.tile span{font-size:12px;color:var(--muted)}
+.facts{list-style:none;margin:14px 0 0;padding:12px;border-radius:12px;background:var(--accent-soft);color:var(--accent-ink);display:grid;gap:4px;font-size:14px}
+.facts .more{color:var(--muted);font-size:13px}
+.s-sec{margin-top:6px}
+.s-sec h3{font-size:16px;margin:0 0 10px}
+.podium{list-style:none;margin:0 0 12px;padding:0;display:grid;gap:4px}
+.podium li{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:10px;align-items:center;padding:8px 10px;border-radius:10px}
+.podium li:first-child{background:var(--accent-soft)}
+.podium .medal{font-size:22px;line-height:1}
+.podium b{font-family:var(--font-num);font-variant-numeric:tabular-nums}
+.podium li:first-child b{color:var(--accent-ink);font-size:18px}
+.podium small{display:block;font-size:12px;color:var(--muted)}
+.awards{list-style:none;margin:0;padding:0;display:grid;gap:12px}
+.award{display:grid;grid-template-columns:40px minmax(0,1fr) auto;gap:10px;align-items:center}
+.award .a-icon{width:40px;height:40px;border-radius:50%;display:grid;place-items:center;font-size:20px;background:var(--tint)}
+.award .a-label{font-size:12px;font-weight:600;color:var(--tone)}
+.award .a-name{font-weight:600;overflow-wrap:anywhere;line-height:1.35}
+.award .a-detail{font-size:12px;color:var(--muted);line-height:1.35}
+.award .a-value{font-family:var(--font-num);font-weight:600;color:var(--tone);text-align:right;white-space:nowrap}
+.awards.bills{--tint:var(--accent-soft);--tone:var(--accent-ink)}
+.awards.praise{--tint:var(--good-soft);--tone:var(--good)}
+.awards.tease{--tint:var(--bad-soft);--tone:var(--bad)}
+.s-table-wrap{overflow-x:auto;margin:0 -4px;padding:0 4px}
+.s-table{width:100%;border-collapse:collapse;font-size:13px;font-variant-numeric:tabular-nums}
+.s-table th{font-weight:500;color:var(--muted);text-align:right;padding:4px 6px;border-bottom:1px solid var(--line);white-space:nowrap}
+.s-table td{padding:7px 6px;border-bottom:1px dotted var(--line);text-align:right;font-family:var(--font-num);white-space:nowrap}
+.s-table th:first-child,.s-table td:first-child{text-align:left;font-family:var(--font-body);font-weight:500;white-space:normal;padding-left:0}
+.s-table td.owe{color:var(--bad)}
+
+.suggest{border:1px solid var(--accent);background:var(--accent-soft);border-radius:14px;padding:12px 14px;margin-bottom:12px;display:grid;gap:10px}
+.suggest h3{font-size:15px;color:var(--accent-ink)}
+.suggest ul{list-style:none;margin:0;padding:0;display:grid;gap:8px}
+.suggest li{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:6px 10px;font-size:14px}
+.suggest li b{font-weight:600}
+.suggest .sg-act{display:flex;align-items:center;gap:8px}
+.suggest .sg-all{justify-self:start}
+@media (max-width:959px){ .crew .col-input{display:contents} .crew .bill-head{order:-2} .crew .col-summary{order:-1} }
 @media (max-width:440px){ .seg.modes{grid-template-columns:repeat(2,minmax(0,1fr))} }
 @media (max-width:350px){
   .row2{grid-template-columns:1fr}
@@ -316,8 +380,20 @@ fieldset.field{border:0;margin:0;padding:0;min-width:0;gap:8px}
       <p class="hint">สร้างบิลแล้วส่งเข้ากลุ่ม LINE ให้เพื่อนช่วยกันใส่ค่าใช้จ่าย ทุกคนเห็นยอดเดียวกันและกดยืนยันการโอนเองได้</p>
       <label class="field"><span>ชื่องาน</span><input id="nbTitle" class="inp" placeholder="เช่น วงเหล้าศุกร์นี้" maxlength="60"></label>
       <label class="field"><span>วันที่</span><input id="nbDate" type="date" class="inp"></label>
+      <label class="field"><span>อยู่ในวงไหน (ไม่เลือกก็ได้)</span><select id="nbCrew" class="inp"></select></label>
+      <label class="field" id="nbCrewNameWrap" hidden><span>ชื่อวงใหม่</span><input id="nbCrewName" class="inp" placeholder="เช่น แก๊งศุกร์สุดท้าย" maxlength="40"></label>
+      <p class="hint" id="nbCrewHint" hidden>บิลในวงเดียวกันจะถูกนับรวมเป็นสถิติ และดึงรายชื่อจากบิลล่าสุดของวงมาให้</p>
       <button type="submit" class="btn primary wide" id="nbSubmit">สร้างบิล</button>
     </form>
+    <section aria-labelledby="hCrews" class="crews">
+      <div class="sec-head"><h2 id="hCrews">วงของฉัน</h2></div>
+      <p class="hint sec-hint">วงคือกลุ่มเพื่อนที่ตั้งวงด้วยกันประจำ บิลในวงเดียวกันจะถูกนับรวมเป็นสถิติ เช่น บิลแห่งความพัง ขาประจำ และจอมดอง</p>
+      <ul class="items" id="recentCrews" style="margin-top:0"></ul>
+      <form class="add-person" id="newCrew" autocomplete="off">
+        <input id="ncName" class="inp" placeholder="ตั้งชื่อวงใหม่" aria-label="ชื่อวงใหม่" maxlength="40">
+        <button class="btn" type="submit">สร้างวง</button>
+      </form>
+    </section>
     <section aria-labelledby="hRecent">
       <div class="sec-head"><h2 id="hRecent">บิลที่เคยเปิด</h2></div>
       <ul class="items" id="recent" style="margin-top:0"></ul>
@@ -328,7 +404,7 @@ fieldset.field{border:0;margin:0;padding:0;min-width:0;gap:8px}
   <!-- ไม่พบบิล -->
   <main id="notFound" class="home" hidden>
     <div class="card">
-      <h1>ไม่พบบิลนี้</h1>
+      <h1 id="nfTitle">ไม่พบบิลนี้</h1>
       <p class="hint" id="notFoundMsg">ลิงก์อาจไม่ครบ หรือบิลนี้สร้างไว้ในโหมดทดลองบนเครื่องอื่น</p>
       <button type="button" class="btn primary" id="nfHome">กลับหน้าแรก</button>
     </div>
@@ -348,6 +424,7 @@ fieldset.field{border:0;margin:0;padding:0;min-width:0;gap:8px}
           <button type="button" class="btn primary" id="inviteBtn">ชวนเพื่อนในกลุ่ม LINE</button>
           <button type="button" class="btn" id="copyLinkBtn">คัดลอกลิงก์บิล</button>
         </div>
+        <div class="crew-row" id="crewRow"></div>
       </section>
 
       <section class="whoami" id="whoami" hidden aria-labelledby="hWho">
@@ -473,6 +550,67 @@ fieldset.field{border:0;margin:0;padding:0;min-width:0;gap:8px}
           <details class="preview" id="preview">
             <summary>ดูข้อความที่จะคัดลอก</summary>
             <textarea id="copyText" readonly aria-label="ข้อความสรุป"></textarea>
+          </details>
+        </div>
+      </div>
+    </aside>
+  </main>
+
+  <!-- หน้าวง -->
+  <main id="crewView" class="cols crew" hidden>
+    <div class="col-input">
+      <section class="bill-head" aria-label="ข้อมูลวง">
+        <div><span class="tag">วง</span></div>
+        <input id="crewName" class="title-input" aria-label="ชื่อวง" placeholder="ตั้งชื่อวง" maxlength="40">
+        <div class="meta" id="crewMeta"></div>
+        <div class="share-row">
+          <button type="button" class="btn primary" id="crewNewBill">สร้างบิลใหม่ในวงนี้</button>
+          <button type="button" class="btn" id="crewInvite">ชวนเพื่อนเข้าวง</button>
+          <button type="button" class="btn" id="crewCopyLink">คัดลอกลิงก์วง</button>
+        </div>
+      </section>
+
+      <section aria-labelledby="hCrewBills">
+        <div class="sec-head"><h2 id="hCrewBills">บิลในวง</h2><span class="count" id="crewBillCount"></span></div>
+        <ul class="items" id="crewBills" style="margin-top:0"></ul>
+        <p class="empty-note" id="crewBillsEmpty">ยังไม่มีบิลในวงนี้ กด "สร้างบิลใหม่ในวงนี้" หรือเพิ่มบิลเก่าจากด้านล่าง</p>
+        <details class="preview" id="addOld" style="margin-top:12px">
+          <summary>เพิ่มบิลเก่าเข้าวง</summary>
+          <ul class="items" id="oldBills"></ul>
+          <p class="hint" id="oldBillsEmpty" style="margin-top:8px">ไม่มีบิลที่เคยเปิดในเครื่องนี้ที่ยังไม่อยู่ในวง</p>
+        </details>
+      </section>
+
+      <section aria-labelledby="hMembers">
+        <div class="sec-head"><h2 id="hMembers">สมาชิก</h2><span class="count" id="memberCount"></span></div>
+        <p class="hint sec-hint">ระบบจับคนข้ามบิลจากบัญชี LINE หรือจากชื่อ ถ้าคนเดียวกันกลายเป็นสองชื่อ เช่น "บอ" กับ "บอย" ให้เลือก "รวมกับ" ที่ชื่อที่ผิด รวมครั้งเดียว บิลต่อไปที่ใช้ชื่อนั้นจะนับเป็นคนเดียวกันเอง</p>
+        <div class="suggest" id="memberSuggest" hidden></div>
+        <ul class="people" id="memberList"></ul>
+      </section>
+
+      <section aria-labelledby="hCrewSet">
+        <div class="sec-head"><h2 id="hCrewSet">ตั้งค่าสถิติ</h2></div>
+        <label class="field"><span>ราคาเบียร์ขวดใหญ่ที่ใช้เทียบ (บาท)</span><input id="beerPrice" class="inp num" inputmode="numeric" maxlength="4"></label>
+        <p class="hint" style="margin-top:6px">ใช้คิด "ค่าเหล้าเทียบเท่าเบียร์ขวดใหญ่ราว … ขวด" จากยอดเงินในหมวดเหล้า/เบียร์</p>
+      </section>
+    </div>
+
+    <aside class="col-summary" aria-labelledby="sEyebrow">
+      <div class="receipt">
+        <div class="r-eyebrow" id="sEyebrow">สถิติวง</div>
+        <div class="r-title" id="sCrewTitle"></div>
+        <div class="stats-ctl">
+          <label for="periodSel" class="hint">ช่วงเวลา</label>
+          <select id="periodSel" class="inp"></select>
+        </div>
+        <div id="statsBody"></div>
+        <div class="share" id="statsShare">
+          <hr class="dash">
+          <button type="button" class="btn primary wide" id="sendStats">ส่งสถิติเข้ากลุ่ม LINE</button>
+          <button type="button" class="btn wide" id="copyStats">คัดลอกสถิติเป็นข้อความ</button>
+          <details class="preview" id="statsPreview">
+            <summary>ดูข้อความที่จะคัดลอก</summary>
+            <textarea id="statsText" readonly aria-label="ข้อความสถิติ"></textarea>
           </details>
         </div>
       </div>
